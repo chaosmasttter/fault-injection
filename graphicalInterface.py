@@ -1,8 +1,12 @@
-from Tkinter import Tk, Canvas, Scrollbar, HORIZONTAL, VERTICAL, N, S, W, E
+from Tkinter import Tk, Canvas, Scrollbar, HORIZONTAL, VERTICAL, NW, NE, SW, SE, N, S, W, E
 import ttk as themed
 
 class Visualisation(object):
-    def __init__(self, parent):
+    def __init__(self, parent, data, coloring, timeLabeling, positionLabeling):
+        self.data = data
+        self.coloring = coloring
+        self.timeLabeling = timeLabeling
+        self.positionLabeling = positionLabeling
 
         # the frame containing all widgets needed for the visualisation
         self.mainframe = themed.Frame(parent, padding = 5)
@@ -16,6 +20,10 @@ class Visualisation(object):
         color = themed.Style().lookup("TFrame", "background")
         for canvas in [self.content, self.timeLabels, self.positionLabels, self.legend]:
             canvas['background'] = color
+            canvas['highlightthickness'] = 0
+
+        self.plotTimeLabels()
+        self.plotPositionLabelsAndData()
 
         self.scrollHorizontal = themed.Scrollbar(self.mainframe, orient = HORIZONTAL)
         self.scrollVertical   = themed.Scrollbar(self.mainframe, orient = VERTICAL)
@@ -48,9 +56,67 @@ class Visualisation(object):
         self.mainframe.columnconfigure( 1, weight = 1 )
         self.mainframe.rowconfigure(    1, weight = 1 )
 
+    def plotTimeLabels(self):
+        nextFree = {}
+        lineStart = {}
+
+        textSize = self.getDefaultTextSize(self.timeLabels)
+
+        for time, labelText in sorted(self.timeLabeling.items()):
+            line = 0
+            while line in nextFree and nextFree[line] > time:
+                line += 1
+
+            label = self.timeLabels.create_text(time, line * textSize * 3 / 2, text = labelText, anchor = NW)
+            _, _, x, y = self.timeLabels.bbox(label)
+            nextFree[line] = x + textSize / 2
+            lineStart[time] = y
+
+        boundingBox = self.timeLabels.bbox('all')
+        width  = boundingBox[2]
+        height = boundingBox[3] + textSize / 2
+        for x, y in lineStart.items():
+            self.timeLabels.create_line(x, y, x, height, tags = 'line', fill = 'grey')
+        self.timeLabels.tag_lower('line')
+
+        self.timeLabels['height'] = height
+        self.timeLabels['scrollregion'] = (0, 0, width, height)
+
+    def plotPositionLabelsAndData(self):
+        textSize = self.getDefaultTextSize(self.positionLabels)
+        offset = 0
+        width = 0
+
+        for (lower, upper), labels in sorted(self.positionLabeling.items()):
+            for position in range(lower, upper):
+                try:
+                    for time, value in self.data[position].items():
+                        x, y = 2 * time, offset + 2 * position
+                        point = self.content.create_rectangle(x, y, x + 2, y + 2, width = 0, fill = self.coloring[value])
+                except KeyError:
+                    pass
+
+            end = lower
+            for (position, labelText) in sorted(labels.items()):
+                if position < end: continue
+                label = self.positionLabels.create_text(0, offset + position - end, text = labelText, anchor = NW)
+                _, _, x, y = self.positionLabels.bbox(label)
+                offset = y
+                width = max(width, x)
+                end = position + textSize
+            offset += textSize / 2
+
+        self.positionLabels['width'] = width
+        self.positionLabels['scrollregion'] = (0, 0, width, offset - textSize / 2)
+
+    def getDefaultTextSize(_, canvas):
+        text = canvas.create_text(0, 0, anchor = N)
+        size = canvas.bbox(text)[3]
+        canvas.delete(text)
+        return size
 
 root = Tk()
-Visualisation(root, None, None, None, None).mainframe.grid(column = 0, row = 0, sticky = (N, S, W, E))
+Visualisation(root, { 0 : { 1 : 0, 2 : 0, 3 : 1 }, 1 : { 5 : 0, 6 : 1, 7 : 1 }, 4 : { 1 : 0, 2 : 1, 3 : 0 } }, { 0 : 'black', 1 : 'red' }, {1 : 'start', 20 : 'next', 40 : 'end::end', 50 : 'veryveryveryverylongstring' }, {(0,2): {0 : 'hi', 2 : 'you'}, (2, 10): {3 : 'this'}}).mainframe.grid(column = 0, row = 0, sticky = (N, S, W, E))
 root.columnconfigure( 0, weight = 1 )
 root.rowconfigure(    0, weight = 1 )
 root.mainloop()
