@@ -1,53 +1,56 @@
 from Tkinter import Tk, Canvas, Scrollbar, HORIZONTAL, VERTICAL, N, S, W, E
 import ttk as themed
 
-root = Tk()
+class Visualisation(object):
+    def __init__(self, parent):
 
-# use a themed frame to handle the background color
-mainframe = themed.Frame(root, padding = 5)
-mainframe.grid(column = 0, row = 0, sticky = (N, S, W, E))
+        # the frame containing all widgets needed for the visualisation
+        self.mainframe = themed.Frame(parent, padding = 5)
+
+        self.content        = Canvas(self.mainframe)
+        self.timeLabels     = Canvas(self.mainframe)
+        self.positionLabels = Canvas(self.mainframe)
+        self.legend         = Canvas(self.mainframe)
+
+        # set the background color of the canvases to match that of the themed widgets
+        color = themed.Style().lookup("TFrame", "background")
+        for canvas in [self.content, self.timeLabels, self.positionLabels, self.legend]:
+            canvas['background'] = color
+
+        self.scrollHorizontal = themed.Scrollbar(self.mainframe, orient = HORIZONTAL)
+        self.scrollVertical   = themed.Scrollbar(self.mainframe, orient = VERTICAL)
+
+        # set the right callbacks for the scrollbars
+        for canvas in [self.content, self.timeLabels]:
+            canvas['xscrollcommand'] = self.scrollHorizontal.set
+
+        for canvas in [self.content, self.positionLabels]:
+            canvas['yscrollcommand'] = self.scrollVertical.set
+
+        def scrollAllHorizontal(*arguments):
+            for canvas in [self.content, self.timeLabels]:
+                canvas.xview(*arguments)
+
+        def scrollAllVertical(*arguments):
+            for canvas in [self.content, self.positionLabels]:
+                canvas.xview(*arguments)
+
+        self.scrollHorizontal['command'] = scrollAllHorizontal
+        self.scrollVertical  ['command'] = scrollAllVertical
+
+        # place everything on the screen
+        self.timeLabels      .grid( column = 1, row = 0, sticky = (N,S,E,W) )
+        self.positionLabels  .grid( column = 0, row = 1, sticky = (N,S,E,W) )
+        self.content         .grid( column = 1, row = 1, sticky = (N,S,E,W) )
+        self.scrollHorizontal.grid( column = 1, row = 2, sticky = (N,S,E,W) )
+        self.scrollVertical  .grid( column = 2, row = 1, sticky = (N,S,E,W) )
+        self.legend          .grid( column = 1, row = 3, sticky = (N,S,E,W) )
+        self.mainframe.columnconfigure( 1, weight = 1 )
+        self.mainframe.rowconfigure(    1, weight = 1 )
+
+
+root = Tk()
+Visualisation(root, None, None, None, None).mainframe.grid(column = 0, row = 0, sticky = (N, S, W, E))
 root.columnconfigure( 0, weight = 1 )
 root.rowconfigure(    0, weight = 1 )
-
-content        = Canvas(mainframe)
-timeLabels     = Canvas(mainframe)
-positionLabels = Canvas(mainframe)
-legend         = Canvas(mainframe)
-
-# set the background color of the canvases to match that of the themed widgets
-color = themed.Style().lookup("TFrame", "background")
-for canvas in [content, timeLabels, positionLabels, legend]:
-    canvas['background'] = color
-
-scrollHorizontal = themed.Scrollbar(mainframe, orient = HORIZONTAL)
-scrollVertical   = themed.Scrollbar(mainframe, orient = VERTICAL)
-
-# set the right callbacks for the scrollbars
-for canvas in [content, timeLabels]:
-    canvas['xscrollcommand'] = scrollHorizontal.set
-
-for canvas in [content, positionLabels]:
-    canvas['yscrollcommand'] = scrollVertical.set
-
-def scrollAllHorizontal(*arguments):
-    for canvas in [content, timeLabels]:
-        canvas.xview(*arguments)
-
-def scrollAllVertical(*arguments):
-    for canvas in [content, positionLabels]:
-        canvas.xview(*arguments)
-
-scrollHorizontal['command'] = scrollAllHorizontal
-scrollVertical  ['command'] = scrollAllVertical
-
-# place everything on the screen
-timeLabels      .grid( column = 1, row = 0, sticky = (N,S,E,W) )
-positionLabels  .grid( column = 0, row = 1, sticky = (N,S,E,W) )
-content         .grid( column = 1, row = 1, sticky = (N,S,E,W) )
-scrollHorizontal.grid( column = 1, row = 2, sticky = (N,S,E,W) )
-scrollVertical  .grid( column = 2, row = 1, sticky = (N,S,E,W) )
-legend          .grid( column = 1, row = 3, sticky = (N,S,E,W) )
-mainframe.columnconfigure( 1, weight = 1 )
-mainframe.rowconfigure(    1, weight = 1 )
-
 root.mainloop()
