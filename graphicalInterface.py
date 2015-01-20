@@ -61,8 +61,10 @@ class Visualisation(object):
         lineStart = {}
 
         textSize = self.getDefaultTextSize(self.timeLabels)
+        self.timeLabels.line = {}
 
         for time, labelText in sorted(self.timeLabeling.items()):
+            time *= 2
             line = 0
             while line in nextFree and nextFree[line] > time:
                 line += 1
@@ -71,6 +73,15 @@ class Visualisation(object):
             _, _, x, y = self.timeLabels.bbox(label)
             nextFree[line] = x + textSize / 2
             lineStart[time] = y
+
+            self.timeLabels.tag_bind(label, '<Enter>', lambda _, label = label, position = time: addLine(label, position))
+            self.timeLabels.tag_bind(label, '<Leave>', lambda _, label = label: removeLine(label))
+
+            def addLine(label, position):
+                self.timeLabels.line[label] = self.content.create_line(position, 0, position, self.content['height'])
+
+            def removeLine(label):
+                self.content.delete(self.timeLabels.line[label])
 
         boundingBox = self.timeLabels.bbox('all')
         width  = boundingBox[2]
@@ -83,9 +94,11 @@ class Visualisation(object):
         self.timeLabels['scrollregion'] = (0, 0, width, height)
 
     def plotPositionLabelsAndData(self):
-        textSize = self.getDefaultTextSize(self.positionLabels)
         offset = 0
         width = 0
+
+        textSize = self.getDefaultTextSize(self.positionLabels)
+        self.positionLabels.line = {}
 
         for (lower, upper), labels in sorted(self.positionLabeling.items()):
             for position in range(lower, upper):
@@ -97,14 +110,25 @@ class Visualisation(object):
                     pass
 
             end = lower
-            for (position, labelText) in sorted(labels.items()):
-                if position < end: continue
-                label = self.positionLabels.create_text(0, offset + position - end, text = labelText, anchor = NW)
+            for (number, labelText) in sorted(labels.items()):
+                if number < end: continue
+                position = offset + number - end
+                label = self.positionLabels.create_text(0, position, text = labelText, anchor = NW)
                 _, _, x, y = self.positionLabels.bbox(label)
                 offset = y
                 width = max(width, x)
                 end = position + textSize
-            offset += textSize / 2
+
+                self.positionLabels.tag_bind(label, '<Enter>', lambda _, label = label, position = position: addLine(label, position))
+                self.positionLabels.tag_bind(label, '<Leave>', lambda _, label = label: removeLine(label))
+
+                def addLine(label, position):
+                    self.positionLabels.line[label] = self.content.create_line(0, position, self.content['width'], position)
+
+                def removeLine(label):
+                    self.content.delete(self.positionLabels.line[label])
+
+                offset += textSize / 2
 
         self.positionLabels['width'] = width
         self.positionLabels['scrollregion'] = (0, 0, width, offset - textSize / 2)
