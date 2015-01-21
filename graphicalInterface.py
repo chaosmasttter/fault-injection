@@ -41,7 +41,7 @@ class Visualisation(object):
 
         def scrollAllVertical(*arguments):
             for canvas in [self.content, self.positionLabels]:
-                canvas.xview(*arguments)
+                canvas.yview(*arguments)
 
         self.scrollHorizontal['command'] = scrollAllHorizontal
         self.scrollVertical  ['command'] = scrollAllVertical
