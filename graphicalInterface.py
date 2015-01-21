@@ -22,8 +22,7 @@ class Visualisation(object):
             canvas['background'] = color
             canvas['highlightthickness'] = 0
 
-        self.plotTimeLabels()
-        self.plotPositionLabelsAndData()
+        self.plot()
 
         self.scrollHorizontal = themed.Scrollbar(self.mainframe, orient = HORIZONTAL)
         self.scrollVertical   = themed.Scrollbar(self.mainframe, orient = VERTICAL)
@@ -56,49 +55,54 @@ class Visualisation(object):
         self.mainframe.columnconfigure( 1, weight = 1 )
         self.mainframe.rowconfigure(    1, weight = 1 )
 
-    def plotTimeLabels(self):
-        nextFree = {}
+    def plot(self):
+        self.timeLabels.line = {}
+        self.positionLabels.line = {}
+
+        def addVerticalLine(label, position):
+            self.timeLabels.line[label] = self.content.create_line(position, self.content.canvasy(0), position, self.content.winfo_height())
+
+        def removeVerticalLine(label):
+            self.content.delete(self.timeLabels.line[label])
+
+        def addHorizontalLine(label, position):
+            self.positionLabels.line[label] = self.content.create_line(self.content.canvasx(0), position, self.content.winfo_width(), position)
+
+        def removeHorizontalLine(label):
+            self.content.delete(self.positionLabels.line[label])
+
+        offset = {}
         lineStart = {}
 
         textSize = self.getDefaultTextSize(self.timeLabels)
-        self.timeLabels.line = {}
 
         for time, labelText in sorted(self.timeLabeling.items()):
             time *= 2
             line = 0
-            while line in nextFree and nextFree[line] > time:
+            while line in offset and offset[line] > time:
                 line += 1
 
             label = self.timeLabels.create_text(time, line * textSize * 3 / 2, text = labelText, anchor = NW)
             _, _, x, y = self.timeLabels.bbox(label)
-            nextFree[line] = x + textSize / 2
+            offset[line] = x + textSize / 2
             lineStart[time] = y
 
-            self.timeLabels.tag_bind(label, '<Enter>', lambda _, label = label, position = time: addLine(label, position))
-            self.timeLabels.tag_bind(label, '<Leave>', lambda _, label = label: removeLine(label))
-
-            def addLine(label, position):
-                self.timeLabels.line[label] = self.content.create_line(position, 0, position, self.content['height'])
-
-            def removeLine(label):
-                self.content.delete(self.timeLabels.line[label])
+            self.timeLabels.tag_bind(label, '<Enter>', lambda _, label = label, position = time: addVerticalLine(label, position))
+            self.timeLabels.tag_bind(label, '<Leave>', lambda _, label = label: removeVerticalLine(label))
 
         boundingBox = self.timeLabels.bbox('all')
-        width  = boundingBox[2]
+        if boundingBox is None: boundingBox = 0,0,0,0
         height = boundingBox[3] + textSize / 2
         for x, y in lineStart.items():
             self.timeLabels.create_line(x, y, x, height, tags = 'line', fill = 'grey')
         self.timeLabels.tag_lower('line')
 
         self.timeLabels['height'] = height
-        self.timeLabels['scrollregion'] = (0, 0, width, height)
 
-    def plotPositionLabelsAndData(self):
         offset = 0
         width = 0
 
         textSize = self.getDefaultTextSize(self.positionLabels)
-        self.positionLabels.line = {}
 
         for (lower, upper), labels in sorted(self.positionLabeling.items()):
             for position in range(lower, upper):
@@ -119,19 +123,12 @@ class Visualisation(object):
                 width = max(width, x)
                 end = position + textSize
 
-                self.positionLabels.tag_bind(label, '<Enter>', lambda _, label = label, position = position: addLine(label, position))
-                self.positionLabels.tag_bind(label, '<Leave>', lambda _, label = label: removeLine(label))
-
-                def addLine(label, position):
-                    self.positionLabels.line[label] = self.content.create_line(0, position, self.content['width'], position)
-
-                def removeLine(label):
-                    self.content.delete(self.positionLabels.line[label])
+                self.positionLabels.tag_bind(label, '<Enter>', lambda _, label = label, position = position: addHorizontalLine(label, position))
+                self.positionLabels.tag_bind(label, '<Leave>', lambda _, label = label: removeHorizontalLine(label))
 
                 offset += textSize / 2
 
         self.positionLabels['width'] = width
-        self.positionLabels['scrollregion'] = (0, 0, width, offset - textSize / 2)
 
     def getDefaultTextSize(_, canvas):
         text = canvas.create_text(0, 0, anchor = N)
