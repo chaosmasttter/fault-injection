@@ -23,6 +23,7 @@ class Visualisation(object):
             canvas['highlightthickness'] = 0
 
         self.plot()
+        self.setScrollRegions()
 
         self.scrollHorizontal = themed.Scrollbar(self.mainframe, orient = HORIZONTAL)
         self.scrollVertical   = themed.Scrollbar(self.mainframe, orient = VERTICAL)
@@ -62,25 +63,23 @@ class Visualisation(object):
         def addVerticalLine(label, position):
             self.timeLabels.line[label] = self.content.create_line(position, self.content.canvasy(0), position, self.content.winfo_height())
 
-        def removeVerticalLine(label):
-            self.content.delete(self.timeLabels.line[label])
-
         def addHorizontalLine(label, position):
             self.positionLabels.line[label] = self.content.create_line(self.content.canvasx(0), position, self.content.winfo_width(), position)
+
+        def removeVerticalLine(label):
+            self.content.delete(self.timeLabels.line[label])
 
         def removeHorizontalLine(label):
             self.content.delete(self.positionLabels.line[label])
 
-        offset = {}
         lineStart = {}
-
+        offset = {}
         textSize = self.getDefaultTextSize(self.timeLabels)
 
         for time, labelText in sorted(self.timeLabeling.items()):
             time *= 2
             line = 0
-            while line in offset and offset[line] > time:
-                line += 1
+            while line in offset and offset[line] > time: line += 1
 
             label = self.timeLabels.create_text(time, line * textSize * 3 / 2, text = labelText, anchor = NW)
             _, _, x, y = self.timeLabels.bbox(label)
@@ -90,18 +89,15 @@ class Visualisation(object):
             self.timeLabels.tag_bind(label, '<Enter>', lambda _, label = label, position = time: addVerticalLine(label, position))
             self.timeLabels.tag_bind(label, '<Leave>', lambda _, label = label: removeVerticalLine(label))
 
-        boundingBox = self.timeLabels.bbox('all')
-        if boundingBox is None: boundingBox = 0,0,0,0
-        height = boundingBox[3] + textSize / 2
-        for x, y in lineStart.items():
-            self.timeLabels.create_line(x, y, x, height, tags = 'line', fill = 'grey')
-        self.timeLabels.tag_lower('line')
+        try:
+            height = self.timeLabels.bbox('all')[3] + textSize / 2
+            for x, y in lineStart.items():
+                self.timeLabels.create_line(x, y, x, height, tags = 'line', fill = 'grey')
+                self.timeLabels.tag_lower('line')
 
-        self.timeLabels['height'] = height
+        except TypeError: pass # if the canvas is empty bbox('all') returns no tuple
 
         offset = 0
-        width = 0
-
         textSize = self.getDefaultTextSize(self.positionLabels)
 
         for (lower, upper), labels in sorted(self.positionLabeling.items()):
@@ -118,9 +114,7 @@ class Visualisation(object):
                 if number < end: continue
                 position = offset + number - end
                 label = self.positionLabels.create_text(0, position, text = labelText, anchor = NW)
-                _, _, x, y = self.positionLabels.bbox(label)
-                offset = y
-                width = max(width, x)
+                offset = self.positionLabels.bbox(label)[2]
                 end = position + textSize
 
                 self.positionLabels.tag_bind(label, '<Enter>', lambda _, label = label, position = position: addHorizontalLine(label, position))
@@ -128,7 +122,50 @@ class Visualisation(object):
 
                 offset += textSize / 2
 
-        self.positionLabels['width'] = width
+    def setScrollRegions(self):
+        contentBoundingBox = self.content.bbox('all')
+        timeLabelsBoundingBox = self.timeLabels.bbox('all')
+        positionLabelsBoundingBox = self.timeLabels.bbox('all')
+
+        if contentBoundingBox is not None and timeLabelsBoundingBox is not None:
+            lowerX = min(contentBoundingBox[0], timeLabelsBoundingBox[0])
+            upperX = max(contentBoundingBox[2], timeLabelsBoundingBox[2])
+        elif contentBoundingBox is not None:
+            lowerX = contentBoundingBox[0]
+            upperX = contentBoundingBox[2]
+        elif timeLabelsBoundingBox is not None:
+            lowerX = timeLabelsBoundingBox[0]
+            upperX = timeLabelsBoundingBox[2]
+        else:
+            lowerX = 0
+            upperX = 0
+
+        if contentBoundingBox is not None and positionLabelsBoundingBox is not None:
+            lowerY = min(contentBoundingBox[1], positionLabelsBoundingBox[1])
+            upperY = max(contentBoundingBox[3], positionLabelsBoundingBox[3])
+        elif contentBoundingBox is not None:
+            lowerY = contentBoundingBox[1]
+            upperY = contentBoundingBox[3]
+        elif positionLabelsBoundingBox is not None:
+            lowerY = positionLabelsBoundingBox[1]
+            upperY = positionLabelsBoundingBox[3]
+        else:
+            lowerY = 0
+            upperY = 0
+
+        self.content['scrollregion'] = lowerX, lowerY, upperX, upperY
+
+        timeLabelsLowerY, timeLabelsUpperY = 0, 0
+        try: timeLabelsLowerY, timeLabelsUpperY = timeLabelsBoundingBox[1], timeLabelsBoundingBox[3]
+        except TypeError: pass
+        self.timeLabels['scrollregion'] = lowerX, timeLabelsLowerY, upperX, timeLabelsUpperY
+        self.timeLabels['height'] = timeLabelsUpperY - timeLabelsLowerY
+
+        positionLabelsLowerX, positionLabelsUpperX = 0, 0
+        try: positionLabelsLowerX, positionLabelsUpperX = positionLabelsBoundingBox[0], positionLabelsBoundingBox[2]
+        except TypeError: pass
+        self.positionLabels['scrollregion'] = positionLabelsLowerX, lowerY, positionLabelsUpperX, upperY
+        self.positionLabels['width'] = positionLabelsUpperX - positionLabelsLowerX
 
     def getDefaultTextSize(_, canvas):
         text = canvas.create_text(0, 0, anchor = N)
@@ -137,7 +174,7 @@ class Visualisation(object):
         return size
 
 root = Tk()
-Visualisation(root, {y:{x:0 for x in range(500)} for y in range(500)}, {0:'green'}, {1:'hi', 70:'world'}, {(0,200):{}, (400,500):{}}).mainframe.grid(column = 0, row = 0, sticky = (N, S, W, E))
+Visualisation(root, {y:{x:0 for x in range(500)} for y in range(500)}, {0:'green'}, {1:'hi', 70:'world'}, {(0,200):{20:'Cool', 210:'Crazy'}, (400,500):{}}).mainframe.grid(column = 0, row = 0, sticky = (N, S, W, E))
 root.columnconfigure( 0, weight = 1 )
 root.rowconfigure(    0, weight = 1 )
 root.mainloop()
