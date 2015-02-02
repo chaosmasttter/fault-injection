@@ -174,7 +174,7 @@ class Visualisation(object):
         return size
 
 root = Tk()
-Visualisation(root, {y:{x:0 for x in range(500)} for y in range(500)}, {0:'green'}, {1:'hi', 70:'world'}, {(0,200):{20:'Cool', 210:'Crazy'}, (400,500):{}}).mainframe.grid(column = 0, row = 0, sticky = (N, S, W, E))
+Visualisation(root, {y:{x:0 for x in range(500)} for y in range(1000)}, {0:'green'}, {0:'test', 20:'test'}, {(0,200):{0:'test', 1:'test', 200:'test'}, (300,500):{300:'test'}}).mainframe.grid(column = 0, row = 0, sticky = (N, S, W, E))
 root.columnconfigure( 0, weight = 1 )
 root.rowconfigure(    0, weight = 1 )
 root.mainloop()
