@@ -157,15 +157,13 @@ class Visualisation(object):
 
         self.content['scrollregion'] = lowerX, lowerY, upperX, upperY
 
-        timeLabelsLowerY, timeLabelsUpperY = 0, 0
         try: timeLabelsLowerY, timeLabelsUpperY = timeLabelsBoundingBox[1], timeLabelsBoundingBox[3]
-        except TypeError: pass
+        except TypeError: timeLabelsLowerY, timeLabelsUpperY = 0, 0
         self.timeLabels['scrollregion'] = lowerX, timeLabelsLowerY, upperX, timeLabelsUpperY
         self.timeLabels['height'] = timeLabelsUpperY - timeLabelsLowerY
 
-        positionLabelsLowerX, positionLabelsUpperX = 0, 0
         try: positionLabelsLowerX, positionLabelsUpperX = positionLabelsBoundingBox[0], positionLabelsBoundingBox[2]
-        except TypeError: pass
+        except TypeError: positionLabelsLowerX, positionLabelsUpperX = 0, 0
         self.positionLabels['scrollregion'] = positionLabelsLowerX, lowerY, positionLabelsUpperX, upperY
         self.positionLabels['width'] = positionLabelsUpperX - positionLabelsLowerX
 
