@@ -61,10 +61,12 @@ class Visualisation(object):
         self.positionLabels.line = {}
 
         def addVerticalLine(label, position):
-            self.timeLabels.line[label] = self.content.create_line(position, self.content.canvasy(0), position, self.content.winfo_height())
+            y = self.content.canvasy(0)
+            self.timeLabels.line[label] = self.content.create_line(position, y, position, y + self.content.winfo_height())
 
         def addHorizontalLine(label, position):
-            self.positionLabels.line[label] = self.content.create_line(self.content.canvasx(0), position, self.content.winfo_width(), position)
+            x = self.content.canvasx(0)
+            self.positionLabels.line[label] = self.content.create_line(x, position, x + self.content.winfo_width(), position)
 
         def removeVerticalLine(label):
             self.content.delete(self.timeLabels.line[label])
@@ -125,7 +127,7 @@ class Visualisation(object):
     def setScrollRegions(self):
         contentBoundingBox = self.content.bbox('all')
         timeLabelsBoundingBox = self.timeLabels.bbox('all')
-        positionLabelsBoundingBox = self.timeLabels.bbox('all')
+        positionLabelsBoundingBox = self.positionLabels.bbox('all')
 
         if contentBoundingBox is not None and timeLabelsBoundingBox is not None:
             lowerX = min(contentBoundingBox[0], timeLabelsBoundingBox[0])
