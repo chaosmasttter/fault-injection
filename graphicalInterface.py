@@ -1,10 +1,12 @@
 from Tkinter import Tk, Canvas, Scrollbar, HORIZONTAL, VERTICAL, NW, NE, SW, SE, N, S, W, E
 import ttk as themed
+import random
 
 class Visualisation(object):
-    def __init__(self, parent, data, coloring, timeLabeling, positionLabeling):
+    def __init__(self, parent, data, coloring, explanation, timeLabeling, positionLabeling):
         self.data = data
         self.coloring = coloring
+        self.explanation = explanation
         self.timeLabeling = timeLabeling
         self.positionLabeling = positionLabeling
 
@@ -46,13 +48,15 @@ class Visualisation(object):
         self.scrollHorizontal['command'] = scrollAllHorizontal
         self.scrollVertical  ['command'] = scrollAllVertical
 
+        self.legend.bind('<Configure>', self.plotLegend)
+
         # place everything on the screen
         self.timeLabels      .grid( column = 1, row = 0, sticky = (N,S,E,W) )
         self.positionLabels  .grid( column = 0, row = 1, sticky = (N,S,E,W) )
         self.content         .grid( column = 1, row = 1, sticky = (N,S,E,W) )
         self.scrollHorizontal.grid( column = 1, row = 2, sticky = (N,S,E,W) )
         self.scrollVertical  .grid( column = 2, row = 1, sticky = (N,S,E,W) )
-        self.legend          .grid( column = 1, row = 3, sticky = (N,S,E,W) )
+        self.legend          .grid( column = 1, row = 3, sticky = (N,S,E,W), pady = 5 )
         self.mainframe.columnconfigure( 1, weight = 1 )
         self.mainframe.rowconfigure(    1, weight = 1 )
 
@@ -132,6 +136,33 @@ class Visualisation(object):
         except TypeError:
             def showLine(line, canvas): pass
             def hideLine(line, canvas): pass
+
+    def plotLegend(self, event):
+        self.legend.delete('all')
+
+        x, y = 0, 0
+        yend = 0
+
+        for value, explanationText in self.explanation.items():
+            rectangle = self.legend.create_rectangle(x, y, x + 10, y + 10, fill = self.coloring[value])
+            label     = self.legend.create_text(x + 15, y, text = explanationText, anchor = NW)
+
+            _, _, xend, yend = self.legend.bbox(label)
+            yend = max(y + 15, yend)
+
+            if xend < event.width: x = xend + 10
+            elif x is 0:
+                self.legend.delete('all')
+                yend = 0
+                break
+            else:
+                ychange = yend - y
+                self.legend.move(rectangle, - x, ychange)
+                self.legend.move(label,     - x, ychange)
+                x, y = xend - x + 10, yend
+                yend += ychange
+
+        self.legend['height'] = yend
 
     def setScrollRegions(self):
         contentBoundingBox = self.content.bbox('all')
