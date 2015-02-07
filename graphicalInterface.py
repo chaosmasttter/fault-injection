@@ -64,10 +64,14 @@ class Visualisation(object):
         horizontalLines = {}
 
         def showLine(label, canvas):
-            self.content.tag_raise(canvas.line[label])
+            line = canvas.line[label]
+            self.content.tag_raise(line)
+            self.content.itemconfigure(line, fill = 'black')
 
         def hideLine(label, canvas):
-            self.content.tag_lower(canvas.line[label])
+            line = canvas.line[label]
+            self.content.tag_lower(line)
+            self.content.itemconfigure(line, fill = 'grey')
 
         offset = 0
         textSize = self.getDefaultTextSize(self.positionLabels)
