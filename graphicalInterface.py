@@ -214,7 +214,13 @@ class Visualisation(object):
         return size
 
 root = Tk()
-Visualisation(root, {y:{x:0 for x in range(500)} for y in range(1000)}, {0:'green'}, {0:'test', 20:'test'}, {(0,200):{0:'test', 1:'test', 200:'test'}, (300,500):{300:'test'}}).mainframe.grid(column = 0, row = 0, sticky = (N, S, W, E))
+Visualisation(root,
+              {y:{x:random.choice([0,1,2,3]) for x in range(500)} for y in range(1000)},
+              {0:'green', 1:'red', 2:'yellow', 3:'blue', 4:'orange'},
+              {0:'passed', 1:'failed', 2:'timeout', 3:'unknown', 4:'warning'},
+              {0:'test', 20:'test', 10:'test'},
+              {(0,200):{0:'test', 1:'test', 200:'test'}, (300,500):{300:'test'}}
+               ).mainframe.grid(column = 0, row = 0, sticky = (N, S, W, E))
 root.columnconfigure( 0, weight = 1 )
 root.rowconfigure(    0, weight = 1 )
 root.mainloop()
