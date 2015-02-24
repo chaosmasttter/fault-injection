@@ -1,5 +1,8 @@
+#!/usr/bin/env python
+
 import re
 import csv
+import sys
 from struct import unpack
 from subprocess import check_output
 from argparse import ArgumentParser
@@ -92,16 +95,19 @@ class Memory(object):
     descriptor = 'injection_address'
     bits = 8
 
+    @staticmethod
     def read(string):
         try:
             address = long(string)
-        except ValueError:
+        except (ValueError, TypeError):
             raise ValueError('Memory.read: not a memory address')
         if address < 0:
-            address += 0x100000000
+            return address + 0x100000000
+        return address
 
+    @staticmethod
     def show(address):
-        return "{:#X}".format(address)
+        return "0x{:X}".format(address)
 
 def createSymbolTable(filename):
     symbolTable = {}
@@ -141,7 +147,7 @@ def processInstructionPointerTrace(filename, symbolTable):
 def parseResults(filename, classify, dataClass):
     data = {}
 
-    with open(filename, 'r') as resultFile:
+    with open(filename, 'rU') as resultFile:
         for result in csv.DictReader(resultFile):
             try:
                 position = dataClass.read(result[dataClass.descriptor])
@@ -156,8 +162,7 @@ def parseResults(filename, classify, dataClass):
 
             if bitPosition not in data:
                 data[bitPosition] = {}
-            for time in range(timeStart, timeEnd):
-                data[bitPosition][time] = value
+            data[bitPosition][timeStart, timeEnd] = value
 
     return data
 
@@ -169,6 +174,23 @@ def createRegisterLabels():
         upper = lower + Register.bits
         labels[(lower, upper)] = { lower : Register.show(register), upper : ''}
 
+    return labels
+
+def createMemoryLabels(data):
+    labels = {}
+    maximalDistance = 8 * 8
+    
+    cluster = None
+    for position in sorted(data.keys()):
+        if cluster is None:
+            cluster = position, position
+        elif cluster[1] + maximalDistance < position:
+            lower, upper = cluster
+            labels[cluster] = { lower : Memory.show(lower >> 3),
+                                upper : Memory.show(upper >> 3) }
+            cluster = position, position
+        else:
+            cluster = cluster[0], position
     return labels
 
 def parseArguments():
@@ -183,16 +205,42 @@ def parseArguments():
                         help = "show visualisation for register instead of memory")
     return parser.parse_args()
 
+def printStatus(status):
+    print status,
+    if status == "Done": print
+
+    sys.stdout.flush()
+
 def main():
     arguments = parseArguments()
 
     root = Tk()
+
+    printStatus("Create symbol table ...")
     symbolTable = createSymbolTable(arguments.binary)
+    printStatus("Done")
+
+    printStatus("Process instruction pointer trace ...")
     timeLabels = processInstructionPointerTrace(arguments.trace, symbolTable)
+    printStatus("Done")
 
     if arguments.register:
+        printStatus("Parse register test results ...")
         data = parseResults(arguments.data, ResultType.classify, Register)
+        printStatus("Done")
+
+        printStatus("Create register labels ...")
         positionLabels = createRegisterLabels()
+        printStatus("Done")
+
+    else:
+        printStatus("Parse memory test results ...")
+        data = parseResults(arguments.data, ResultType.classify, Memory)
+        printStatus("Done")
+
+        printStatus("Create memory labels ...")
+        positionLabels = createMemoryLabels(data)
+        printStatus("Done")
 
     colorMap = {
         ResultType.OK:                       'green',
@@ -213,9 +261,12 @@ def main():
         ResultType.USER_ERROR:               'user error',
         ResultType.OTHER_ERROR:              'other error'
     }
-    
+
+    printStatus("Create visualisation frame ...")
     Visualisation(root, data, colorMap, explanation, timeLabels, positionLabels
                  ).mainframe.grid(column = 0, row = 0, sticky = 'nsew')
+    printStatus("Done")
+    
     root.columnconfigure( 0, weight = 1 )
     root.rowconfigure(    0, weight = 1 )
     root.mainloop()
