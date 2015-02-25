@@ -92,13 +92,13 @@ class Register(object):
         raise ValueError('Register.show: not a register number')
 
 class Memory(object):
-    descriptor = 'injection_address'
+    descriptor = 'HEX(res.injection_address)'
     bits = 8
 
     @staticmethod
     def read(string):
         try:
-            address = long(string)
+            address = long(string, 16)
         except (ValueError, TypeError):
             raise ValueError('Memory.read: not a memory address')
         if address < 0:
@@ -176,29 +176,105 @@ def createRegisterLabels():
 
     return labels
 
-def createMemoryLabels(data):
+def createMemoryLabels(data, usage, structures):
+    memoryUsage = {}
+    if usage is not None:
+        with open(usage, 'rU') as usageFile:
+            for line in csv.reader(usageFile, delimiter = ' '):
+                try:
+                    address = Memory.read(line[0])
+                    size = int(line[1])
+                    name = line[2]
+                except (IndexError, ValueError): continue
+                memoryUsage[address * 8, (address + size) * 8] = name
+    structurePositions = sorted(memoryUsage.keys(), reverse = True)
+    
+    def parse(line):
+        depth = 0
+        nextResult = []
+        for char in line:
+            if depth == 0 and char == ',':
+                yield ''.join(nextResult).strip()
+                nextResult = []
+                continue
+
+            if char == '<':
+                depth += 1
+            if char == '>':
+                depth -= 1
+
+            nextResult.append(char)
+
+    
+    dataStructures = {}
+    if structures is not None:
+        with open(structures, "rU") as structureFile:
+            for line in structureFile:
+                fieldIterator = parse(line)
+                try:
+                    structureName = next(fieldIterator)
+                    next(fieldIterator)
+                except StopIteration: continue
+                structure = {}
+                for name, offset in zip(* [fieldIterator] * 2):
+                    structure[int(offset)] = name
+                dataStructures[structureName] = structure
+
     labels = {}
     maximalDistance = 8 * 8
-    
+
+    skipEnd = 0
     cluster = None
+    nextStructurePosition = None
     for position in sorted(data.keys()):
+        if position < skipEnd:
+            cluster = None
+            continue
+
+        if structurePositions != []:
+            if nextStructurePosition is None:
+                nextStructurePosition = structurePositions[-1]
+            lower, upper = nextStructurePosition
+            if lower < position:
+                if position < upper:
+                    name = memoryUsage[lower, upper]
+                    try:
+                        labelMap = { lower + offset * 8 : label
+                                     for offset, label
+                                     in dataStructures[name].items()
+                                     if offset > 0 }
+                    except KeyError: labelMap = {}
+                    labelMap[lower] = name
+                    labels[nextStructurePosition] = labelMap
+                    skipEnd = upper
+                    cluster = None
+                structurePositions[-1:] = []
+                nextStructurePosition = None
+
         if cluster is None:
             cluster = position, position
-        elif cluster[1] + maximalDistance < position:
-            lower, upper = cluster
+            continue
+
+        lower, upper = cluster        
+        if upper + maximalDistance < position:
             labels[cluster] = { lower : Memory.show(lower >> 3),
                                 upper : Memory.show(upper >> 3) }
             cluster = position, position
         else:
-            cluster = cluster[0], position
+            cluster = lower, position
+
     return labels
 
 def parseArguments():
     parser = ArgumentParser()
-    parser.add_argument("-b", "--binary", required = True,
+    parser.add_argument("-b", "--binary",
                         help = "object file of the tested code")
-    parser.add_argument("-t", "--trace", required = True,
+    parser.add_argument("-t", "--trace",
                         help = "trace of the instruction pointer")
+    parser.add_argument("-u", "--memory-usage",
+                        help = "file with information about the position of data structures in memory")
+    parser.add_argument("-s", "--data-structures",
+                        help = "file with information about the structure of data structures in memory")
     parser.add_argument("-d", "--data", required = True,
                         help = "csv file with the test results")
     parser.add_argument("-r", "--register", action = 'store_true',
@@ -213,16 +289,20 @@ def printStatus(status):
 
 def main():
     arguments = parseArguments()
-
+    binary = arguments.binary
+    trace  = arguments.trace
+    
     root = Tk()
 
-    printStatus("Create symbol table ...")
-    symbolTable = createSymbolTable(arguments.binary)
-    printStatus("Done")
+    timeLabels = {}
+    if binary is not None and trace is not None:
+        printStatus("Create symbol table ...")
+        symbolTable = createSymbolTable(arguments.binary)
+        printStatus("Done")
 
-    printStatus("Process instruction pointer trace ...")
-    timeLabels = processInstructionPointerTrace(arguments.trace, symbolTable)
-    printStatus("Done")
+        printStatus("Process instruction pointer trace ...")
+        timeLabels = processInstructionPointerTrace(arguments.trace, symbolTable)
+        printStatus("Done")
 
     if arguments.register:
         printStatus("Parse register test results ...")
@@ -239,7 +319,7 @@ def main():
         printStatus("Done")
 
         printStatus("Create memory labels ...")
-        positionLabels = createMemoryLabels(data)
+        positionLabels = createMemoryLabels(data, arguments.memory_usage, arguments.data_structures)
         printStatus("Done")
 
     colorMap = {
