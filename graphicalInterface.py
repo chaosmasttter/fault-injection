@@ -43,16 +43,14 @@ class Visualisation(object):
         self.scrollHorizontal['command'] = self.scrollAllHorizontal
         self.scrollVertical  ['command'] = self.scrollAllVertical
 
-        self.count = 0
-
         self.mainframe.bind_all('<Button-4>', lambda _: self.force
-                            (self.scrollAllVertical,   'scroll', - 1, 'units'))
+                                (self.scrollAllVertical,   'scroll', - 1, 'units'))
         self.mainframe.bind_all('<Button-5>', lambda _: self.force
-                            (self.scrollAllVertical,   'scroll', + 1, 'units'))
+                                (self.scrollAllVertical,   'scroll', + 1, 'units'))
         self.mainframe.bind_all('<Shift-Button-4>', lambda _: self.force
-                            (self.scrollAllHorizontal, 'scroll', - 1, 'units'))
+                                (self.scrollAllHorizontal, 'scroll', - 1, 'units'))
         self.mainframe.bind_all('<Shift-Button-5>', lambda _: self.force
-                            (self.scrollAllHorizontal, 'scroll', + 1, 'units'))
+                                (self.scrollAllHorizontal, 'scroll', + 1, 'units'))
 
         self.legend.bind('<Configure>', self.plotLegend)
 
