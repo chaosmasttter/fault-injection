@@ -40,16 +40,19 @@ class Visualisation(object):
         for canvas in [self.content, self.positionLabels]:
             canvas['yscrollcommand'] = self.scrollVertical.set
 
-        def scrollAllHorizontal(*arguments):
-            for canvas in [self.content, self.timeLabels]:
-                canvas.xview(*arguments)
+        self.scrollHorizontal['command'] = self.scrollAllHorizontal
+        self.scrollVertical  ['command'] = self.scrollAllVertical
 
-        def scrollAllVertical(*arguments):
-            for canvas in [self.content, self.positionLabels]:
-                canvas.yview(*arguments)
+        self.count = 0
 
-        self.scrollHorizontal['command'] = scrollAllHorizontal
-        self.scrollVertical  ['command'] = scrollAllVertical
+        self.mainframe.bind_all('<Button-4>', lambda _: self.force
+                            (self.scrollAllVertical,   'scroll', - 1, 'units'))
+        self.mainframe.bind_all('<Button-5>', lambda _: self.force
+                            (self.scrollAllVertical,   'scroll', + 1, 'units'))
+        self.mainframe.bind_all('<Shift-Button-4>', lambda _: self.force
+                            (self.scrollAllHorizontal, 'scroll', - 1, 'units'))
+        self.mainframe.bind_all('<Shift-Button-5>', lambda _: self.force
+                            (self.scrollAllHorizontal, 'scroll', + 1, 'units'))
 
         self.legend.bind('<Configure>', self.plotLegend)
 
@@ -63,6 +66,18 @@ class Visualisation(object):
                                   , pady = 5 )
         self.mainframe.columnconfigure( 1, weight = 1 )
         self.mainframe.rowconfigure(    1, weight = 1 )
+
+    def scrollAllHorizontal(self, *arguments):
+        for canvas in [self.content, self.timeLabels]:
+            canvas.xview(*arguments)
+
+    def scrollAllVertical(self, *arguments):
+        for canvas in [self.content, self.positionLabels]:
+            canvas.yview(*arguments)
+
+    def force(self, function, *arguments):
+        function(*arguments)
+        self.mainframe.update_idletasks()
 
     def plot(self):
         self.timeLabels.line = {}
@@ -230,7 +245,8 @@ class Visualisation(object):
                                               positionLabelsUpperX, upperY
         self.positionLabels['width'] = positionLabelsUpperX - positionLabelsLowerX
 
-    def getDefaultTextSize(_, canvas):
+    @staticmethod
+    def getDefaultTextSize(canvas):
         text = canvas.create_text(0, 0, anchor = 'n')
         size = canvas.bbox(text)[3]
         canvas.delete(text)
