@@ -97,30 +97,55 @@ class Visualisation(object):
         offset = 0
         textSize = self.getDefaultTextSize(self.positionLabels)
 
-        for (lower, upper), labels in sorted(self.positionLabeling.items()):
-            for position in range(lower, upper):
-                try:
-                    for time, value in self.data[position].items():
-                        y = offset + 2 * (position - lower)
-                        point = self.content.create_rectangle(
-                            2 * time[0], y, 2 * time[1], y + 2,
-                            width = 0, fill = self.coloring[value])
-                except KeyError: pass
+        for (lowerText, upperText), content in sorted(self.positionLabeling.items()):
+            label = self.positionLabels.create_text(
+                0, offset, text = lowerText, anchor = 'nw')
+            self.positionLabels.tag_bind(label, '<Enter>',
+                lambda _, label = label: showLine(label, self.positionLabels))
+            self.positionLabels.tag_bind(label, '<Leave>',
+                lambda _, label = label: hideLine(label, self.positionLabels))
+            offset += textSize
+            horizontalLines[label] = offset
 
-            newOffset = offset
-            for (position, labelText) in sorted(labels.items()):
-                position = offset + 2 * (position - lower)
-                if position < newOffset:  continue
-                label = self.positionLabels.create_text(
-                    0, position, text = labelText, anchor = 'nw')
-                newOffset = self.positionLabels.bbox(label)[3]
+            for (lower, upper), labels in sorted(content.items()):
+                if lower > upper: lower, upper = upper, lower
 
-                horizontalLines[label] = position
-                self.positionLabels.tag_bind(label, '<Enter>',
-                    lambda _, label = label: showLine(label, self.positionLabels))
-                self.positionLabels.tag_bind(label, '<Leave>',
-                    lambda _, label = label: hideLine(label, self.positionLabels))
-            offset = max(offset + 2 * (upper - lower), newOffset) + textSize / 2
+                for position in range(lower, upper):
+                    try:
+                        for time, value in self.data[position].items():
+                            y = offset + 2 * (position - lower)
+                            point = self.content.create_rectangle(
+                                2 * time[0], y, 2 * time[1], y + 2,
+                                width = 0, fill = self.coloring[value])
+                    except KeyError: pass
+
+                for (position, labelText) in sorted(labels.items()):
+                    if not lower <= position <= upper: continue
+
+                    position = offset + 2 * (position - lower)
+                    label = self.positionLabels.create_text(
+                        20, position, text = labelText, anchor = 'nw')
+
+                    horizontalLines[label] = position
+                    self.positionLabels.tag_bind(label, '<Enter>',
+                        lambda _, label = label: showLine(label, self.positionLabels))
+                    self.positionLabels.tag_bind(label, '<Leave>',
+                        lambda _, label = label: hideLine(label, self.positionLabels))
+
+                    box = self.positionLabels.bbox(label)
+                    overlapping = len(self.positionLabels.find_overlapping(*box)) - 1
+                    if overlapping != 0:
+                        self.positionLabels.itemconfigure(label, state = 'hidden')
+
+            offset += 2 * (upper - lower)
+            label = self.positionLabels.create_text(
+                0, offset, text = upperText, anchor = 'nw')
+            self.positionLabels.tag_bind(label, '<Enter>',
+                lambda _, label = label: showLine(label, self.positionLabels))
+            self.positionLabels.tag_bind(label, '<Leave>',
+                lambda _, label = label: hideLine(label, self.positionLabels))
+            horizontalLines[label] = offset
+            offset += 2 * textSize            
 
         offset = {}
         textSize = self.getDefaultTextSize(self.timeLabels)
@@ -152,10 +177,10 @@ class Visualisation(object):
         except TypeError: pass # if the canvas is empty bbox('all') returns no tuple
 
         try:
-            lowerX, lowerY, upperX, upperY = self.content.bbox('all')
+            lowerX, _, upperX, upperY = self.content.bbox('all')
             for label, time in verticalLines.items():
                 self.timeLabels.line[label] = self.content.create_line(
-                    time, lowerY, time, upperY)
+                    time, 0, time, upperY)
                 hideLine(label, self.timeLabels)
             for label, position in horizontalLines.items():
                 self.positionLabels.line[label] = self.content.create_line(

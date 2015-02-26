@@ -17,7 +17,7 @@ class ResultType:
     GENERAL_PROTECTION_FAULT, \
     USER_ERROR, \
     OTHER_ERROR = range(7)
-    
+
     @staticmethod
     def classify(result):
         resultType = result['resulttype']
@@ -152,7 +152,7 @@ def parseResults(filename, classify, dataClass):
             try:
                 position = dataClass.read(result[dataClass.descriptor])
                 bit      = int(result['bit_offset'])
-                
+
                 timeStart = int(result['time1'])
                 timeEnd   = int(result['time2']) + 1
             except (KeyError, ValueError): continue
@@ -168,11 +168,11 @@ def parseResults(filename, classify, dataClass):
 
 def createRegisterLabels():
     labels = {}
-    
+
     for register in range(Register.count):
         lower = register * Register.bits
         upper = lower + Register.bits
-        labels[(lower, upper)] = { lower : Register.show(register), upper : ''}
+        labels[Register.show(register), ''] = { (lower, upper) : {} }
 
     return labels
 
@@ -188,7 +188,7 @@ def createMemoryLabels(data, usage, structures):
                 except (IndexError, ValueError): continue
                 memoryUsage[address * 8, (address + size) * 8] = name
     structurePositions = sorted(memoryUsage.keys(), reverse = True)
-    
+
     def parse(line):
         depth = 0
         nextResult = []
@@ -205,7 +205,6 @@ def createMemoryLabels(data, usage, structures):
 
             nextResult.append(char)
 
-    
     dataStructures = {}
     if structures is not None:
         with open(structures, "rU") as structureFile:
@@ -241,11 +240,10 @@ def createMemoryLabels(data, usage, structures):
                     try:
                         labelMap = { lower + offset * 8 : label
                                      for offset, label
-                                     in dataStructures[name].items()
-                                     if offset > 0 }
+                                     in dataStructures[name].items() }
+
                     except KeyError: labelMap = {}
-                    labelMap[lower] = name
-                    labels[nextStructurePosition] = labelMap
+                    labels[name, ''] = { nextStructurePosition : labelMap }
                     skipEnd = upper
                     cluster = None
                 structurePositions[-1:] = []
@@ -255,10 +253,11 @@ def createMemoryLabels(data, usage, structures):
             cluster = position, position
             continue
 
-        lower, upper = cluster        
+        lower, upper = cluster
         if upper + maximalDistance < position:
-            labels[cluster] = { lower : Memory.show(lower >> 3),
-                                upper : Memory.show(upper >> 3) }
+            lowerLabel = Memory.show(lower >> 3)
+            upperLabel = Memory.show(upper >> 3)
+            labels[lowerLabel, upperLabel] = { cluster : {} }
             cluster = position, position
         else:
             cluster = lower, position
