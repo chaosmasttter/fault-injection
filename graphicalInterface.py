@@ -8,7 +8,7 @@ class Visualisation(object):
         self.data = data
         self.coloring = coloring
         self.explanation = explanation
-        self.timeLabeling = timeLabeling
+        self.timeLabeling = sorted(timeLabeling)
         self.positionLabeling = positionLabeling
 
         # the frame containing all widgets needed for the visualisation
@@ -120,13 +120,13 @@ class Visualisation(object):
         offset = 0
         textSize = self.getDefaultTextSize(self.positionLabels)
 
-        for (lowerText, upperText), content in sorted(self.positionLabeling.items()):
+        for (lowerText, upperText), content in self.positionLabeling:
             if lowerText != '':
                 createLabel(self.positionLabels, lowerText,
                             (0, offset), offset + textSize)
                 offset += textSize
 
-            for (lower, upper), labels in sorted(content.items()):
+            for (lower, upper), labels in content:
                 if lower > upper: lower, upper = upper, lower
 
                 for position in range(lower, upper):
@@ -138,7 +138,7 @@ class Visualisation(object):
                                 width = 0, fill = self.coloring[value])
                     except KeyError: pass
 
-                for (position, text) in sorted(labels.items()):
+                for position, text in labels:
                     if not lower <= position <= upper: continue
 
                     position = offset + 2 * (position - lower)
@@ -160,7 +160,7 @@ class Visualisation(object):
         textSize = self.getDefaultTextSize(self.timeLabels)
         lineStart = {}
 
-        for time, text in sorted(self.timeLabeling.items()):
+        for time, text in self.timeLabeling:
             time *= 2
             line = 0
             while line in offset and offset[line] > time: line += 1
