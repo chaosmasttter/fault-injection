@@ -83,6 +83,7 @@ class Visualisation(object):
 
         verticalLines = {}
         horizontalLines = {}
+        extraHorizontalLines = []
 
         def showLine(label, canvas):
             line = canvas.line[label]
@@ -94,18 +95,36 @@ class Visualisation(object):
             self.content.tag_lower(line)
             self.content.itemconfigure(line, fill = 'grey')
 
+        def createLabel(canvas, text, position, linePosition = None):
+            label = canvas.create_text(*(position), text = text, anchor = 'nw')
+            canvas.tag_bind(label, '<Enter>',
+                            lambda _, label = label: showLine(label, canvas))
+            canvas.tag_bind(label, '<Leave>',
+                            lambda _, label = label: hideLine(label, canvas))
+
+            if canvas is self.timeLabels:
+                if linePosition is None:
+                    verticalLines[label] = position[0]
+                else:
+                    verticalLines[label] = linePosition
+            elif canvas is self.positionLabels:
+                if linePosition is None:
+                    horizontalLines[label] = position[1]
+                else:
+                    horizontalLines[label] = linePosition
+            else:
+                raise ValueError('createLabel: wrong canvas')
+
+            return label
+
         offset = 0
         textSize = self.getDefaultTextSize(self.positionLabels)
 
         for (lowerText, upperText), content in sorted(self.positionLabeling.items()):
-            label = self.positionLabels.create_text(
-                0, offset, text = lowerText, anchor = 'nw')
-            self.positionLabels.tag_bind(label, '<Enter>',
-                lambda _, label = label: showLine(label, self.positionLabels))
-            self.positionLabels.tag_bind(label, '<Leave>',
-                lambda _, label = label: hideLine(label, self.positionLabels))
-            offset += textSize
-            horizontalLines[label] = offset
+            if lowerText != '':
+                createLabel(self.positionLabels, lowerText,
+                            (0, offset), offset + textSize)
+                offset += textSize
 
             for (lower, upper), labels in sorted(content.items()):
                 if lower > upper: lower, upper = upper, lower
@@ -119,54 +138,37 @@ class Visualisation(object):
                                 width = 0, fill = self.coloring[value])
                     except KeyError: pass
 
-                for (position, labelText) in sorted(labels.items()):
+                for (position, text) in sorted(labels.items()):
                     if not lower <= position <= upper: continue
 
                     position = offset + 2 * (position - lower)
-                    label = self.positionLabels.create_text(
-                        20, position, text = labelText, anchor = 'nw')
-
-                    horizontalLines[label] = position
-                    self.positionLabels.tag_bind(label, '<Enter>',
-                        lambda _, label = label: showLine(label, self.positionLabels))
-                    self.positionLabels.tag_bind(label, '<Leave>',
-                        lambda _, label = label: hideLine(label, self.positionLabels))
-
+                    label = createLabel(self.positionLabels, text, (20, position))
                     box = self.positionLabels.bbox(label)
                     overlapping = len(self.positionLabels.find_overlapping(*box)) - 1
                     if overlapping != 0:
                         self.positionLabels.itemconfigure(label, state = 'hidden')
+                offset += 2 * (upper - lower)
 
-            offset += 2 * (upper - lower)
-            label = self.positionLabels.create_text(
-                0, offset, text = upperText, anchor = 'nw')
-            self.positionLabels.tag_bind(label, '<Enter>',
-                lambda _, label = label: showLine(label, self.positionLabels))
-            self.positionLabels.tag_bind(label, '<Leave>',
-                lambda _, label = label: hideLine(label, self.positionLabels))
-            horizontalLines[label] = offset
-            offset += 2 * textSize            
+            if upperText != '':
+                createLabel(self.positionLabels, upperText, (0, offset))
+                offset +=  2 * textSize
+            else:
+                extraHorizontalLines.append(offset)
+                offset += textSize
 
         offset = {}
         textSize = self.getDefaultTextSize(self.timeLabels)
         lineStart = {}
 
-        for time, labelText in sorted(self.timeLabeling.items()):
+        for time, text in sorted(self.timeLabeling.items()):
             time *= 2
             line = 0
             while line in offset and offset[line] > time: line += 1
 
-            label = self.timeLabels.create_text(
-                time, line * textSize * 3 / 2, text = labelText, anchor = 'nw')
+            label = createLabel(self.timeLabels, text, (time, line * textSize))
             _, _, x, y = self.timeLabels.bbox(label)
-            offset[line] = x + textSize / 2
+            offset[line] = x
             lineStart[time] = y
-
-            verticalLines[label] = time
-            self.timeLabels.tag_bind(label, '<Enter>',
-                lambda _, label = label: showLine(label, self.timeLabels))
-            self.timeLabels.tag_bind(label, '<Leave>',
-                lambda _, label = label: hideLine(label, self.timeLabels))
 
         try:
             height = self.timeLabels.bbox('all')[3] + textSize / 2
@@ -186,6 +188,9 @@ class Visualisation(object):
                 self.positionLabels.line[label] = self.content.create_line(
                     lowerX, position, upperX, position)
                 hideLine(label, self.positionLabels)
+            for position in extraHorizontalLines:
+                self.content.create_line(lowerX, position, upperX, position,
+                                         fill = 'grey')
         except TypeError:
             def showLine(line, canvas): pass
             def hideLine(line, canvas): pass

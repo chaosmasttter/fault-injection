@@ -3,6 +3,7 @@
 import re
 import csv
 import sys
+from itertools import chain
 from struct import unpack
 from subprocess import check_output
 from argparse import ArgumentParser
@@ -186,8 +187,8 @@ def createMemoryLabels(data, usage, structures):
                     size = int(line[1])
                     name = line[2]
                 except (IndexError, ValueError): continue
-                memoryUsage[address * 8, (address + size) * 8] = name
-    structurePositions = sorted(memoryUsage.keys(), reverse = True)
+                position = address * Memory.bits, (address + size) * Memory.bits
+                memoryUsage[position] = name
 
     def parse(line):
         depth = 0
@@ -222,45 +223,58 @@ def createMemoryLabels(data, usage, structures):
     labels = {}
     maximalDistance = 8 * 8
 
-    skipEnd = 0
-    cluster = None
-    nextStructurePosition = None
+    cluster = []
+    lastClusterEnd = None
+
     for position in sorted(data.keys()):
-        if position < skipEnd:
-            cluster = None
-            continue
-
-        if structurePositions != []:
-            if nextStructurePosition is None:
-                nextStructurePosition = structurePositions[-1]
-            lower, upper = nextStructurePosition
-            if lower < position:
-                if position < upper:
-                    name = memoryUsage[lower, upper]
-                    try:
-                        labelMap = { lower + offset * 8 : label
-                                     for offset, label
-                                     in dataStructures[name].items() }
-
-                    except KeyError: labelMap = {}
-                    labels[name, ''] = { nextStructurePosition : labelMap }
-                    skipEnd = upper
-                    cluster = None
-                structurePositions[-1:] = []
-                nextStructurePosition = None
-
-        if cluster is None:
-            cluster = position, position
-            continue
-
-        lower, upper = cluster
-        if upper + maximalDistance < position:
-            lowerLabel = Memory.show(lower >> 3)
-            upperLabel = Memory.show(upper >> 3)
-            labels[lowerLabel, upperLabel] = { cluster : {} }
-            cluster = position, position
+        if lastClusterEnd is None or lastClusterEnd + maximalDistance < position:
+            cluster.append((position, position))
+            lastClusterEnd = position
         else:
-            cluster = lower, position
+            cluster[-1] = cluster[-1][0], position
+
+    clusterIterator = iter(cluster)
+    for (start, end), name in sorted(memoryUsage.items()):
+        structureCluster = []
+        for lower, upper in clusterIterator:
+            if lower >= end:
+                clusterIterator = chain([(lower, upper)], clusterIterator)
+                break
+            elif upper <= start:
+                lowerLabel = Memory.show(lower >> 3)
+                upperLabel = Memory.show(lower >> 3)
+                labels[lowerLabel, upperLabel] = { (lower, upper) : {} }
+            elif lower < start:
+                newCluster = [(lower, start), (start, upper)]
+                clusterIterator = chain(newCluster, clusterIterator)
+            elif upper > end:
+                newCluster = [(lower, end), (end, upper)]
+                clusterIterator = chain(newCluster, clusterIterator)
+            else:
+                structureCluster.append((lower, upper))
+        if structureCluster == []: continue
+
+        outer = {}
+        try:
+            fieldIterator = iter(sorted(dataStructures[name].items()))
+            for lower, upper in structureCluster:
+                lastField = None
+                inner = {}
+                for offset, field in fieldIterator:
+                    position = start + offset * Memory.bits
+                    if position < lower:
+                        lastField = position, field 
+                    elif position < upper:
+                        inner[position] = field
+                    else: break
+                if lastField is not None:
+                    position, field = lastField
+                    outer[position, position] = { position : field }
+                outer[lower, upper] = inner
+        except KeyError:
+            for cluster in structureCluster:
+                outer[cluster] = {}
+        labels[name, ''] = outer
 
     return labels
 
