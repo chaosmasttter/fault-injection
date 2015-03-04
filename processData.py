@@ -205,6 +205,7 @@ def createMemoryLabels(data, usage, structures):
                 depth -= 1
 
             nextResult.append(char)
+        yield ''.join(nextResult).strip()
 
     dataStructures = {}
     if structures is not None:
@@ -218,7 +219,8 @@ def createMemoryLabels(data, usage, structures):
                 structure = []
                 for name, offset in zip(* [fieldIterator] * 2):
                     structure.append((int(offset), name))
-                dataStructures[structureName] = structure
+                if structure != []:
+                    dataStructures[structureName] = structure
 
     labels = []
     maximalDistance = 8 * 8
