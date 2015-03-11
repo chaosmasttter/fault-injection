@@ -52,6 +52,14 @@ class Visualisation(object):
         self.mainframe.bind_all('<Shift-Button-5>', lambda _: self.force
                                 (self.scrollAllHorizontal, 'scroll', + 1, 'units'))
 
+        def doUpdate(_): self.mainframe.update_idletasks()
+
+        self.mainframe.bind_all('<Control-Button-4>', doUpdate)
+        self.mainframe.bind_all('<Control-Button-5>', doUpdate)
+
+        self.content.bind('<Control-Button-4>', lambda event: self.zoom(1.1, event))
+        self.content.bind('<Control-Button-5>', lambda event: self.zoom(0.9, event))
+
         self.legend.bind('<Configure>', self.plotLegend)
 
         # place everything on the screen
@@ -76,6 +84,28 @@ class Visualisation(object):
     def force(self, function, *arguments):
         function(*arguments)
         self.mainframe.update_idletasks()
+
+    def zoom(self, scale, event):
+        x, y = self.content.canvasx(event.x), self.content.canvasy(event.y)
+
+        self.content       .scale('all', x, y, scale, scale)
+        self.timeLabels    .scale('all', x, y, scale, 1,   )
+        self.positionLabels.scale('all', x, y, 1,     scale)
+
+        self.managePositionLabels()
+        self.setScrollRegions()
+
+    def maybeHidePositionLabel(self, label):
+        box = self.positionLabels.bbox(label)
+        overlapping = len(self.positionLabels.find_overlapping(*box)) - 1
+        if overlapping != 0:
+            self.positionLabels.itemconfigure(label, state = 'hidden')
+        
+
+    def managePositionLabels(self):
+        for label in self.positionLabels.find_all():
+            self.positionLabels.itemconfigure(label, state = 'normal')
+            self.maybeHidePositionLabel(label)
 
     def plot(self):
         self.timeLabels.line = {}
@@ -143,10 +173,7 @@ class Visualisation(object):
 
                     position = offset + 2 * (position - lower)
                     label = createLabel(self.positionLabels, text, (20, position))
-                    box = self.positionLabels.bbox(label)
-                    overlapping = len(self.positionLabels.find_overlapping(*box)) - 1
-                    if overlapping != 0:
-                        self.positionLabels.itemconfigure(label, state = 'hidden')
+                    self.maybeHidePositionLabel(label)
                 offset += 2 * (upper - lower)
 
             if upperText != '':
