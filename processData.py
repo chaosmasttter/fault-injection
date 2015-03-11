@@ -3,7 +3,7 @@
 import re
 import csv
 import sys
-from itertools import chain
+from itertools import chain, takewhile
 from struct import unpack
 from subprocess import check_output
 from argparse import ArgumentParser
@@ -125,28 +125,28 @@ def createSymbolTable(filename):
 
     return symbolTable
 
-def processInstructionPointerTrace(filename, symbolTable):
-    functions = []
+def createTimeLabels(trace, symbolTable):
+    labels = []
 
-    with open(filename, 'rb') as traceFile:
-        lastFunction = ''
-        time = 0
+    symbolAddresses = sorted(symbolTable)
 
-        for traceEntry in iter(lambda:traceFile.read(16), ''):
-            if len(traceEntry) < 16: break
+    lastSymbol = None
+    for time, instructionPointer in sorted(trace):
+        try: 
+            address = list(takewhile(lambda address: address < instructionPointer,
+                                     symbolAddresses))[-1]
+            symbol = symbolTable[address].split('(')[0]
 
-            time += 1
-            instructionPointer, _ = unpack('LL', traceEntry)
-            try:
-                function = symbolTable[instructionPointer].split('(')[0]
-            except KeyError: continue
-            if function != lastFunction:
-                functions.append((time, function))
+            if symbol != lastSymbol:
+                labels.append((time, symbol))
+            lastSymbol = symbol
+        except IndexError: pass
 
-    return functions
+    return labels
 
 def parseResults(filename, classify, dataClass):
     data = {}
+    trace = {}
 
     with open(filename, 'rU') as resultFile:
         for result in csv.DictReader(resultFile):
@@ -155,7 +155,12 @@ def parseResults(filename, classify, dataClass):
                 bit      = int(result['bit_offset'])
 
                 timeStart = int(result['time1'])
-                timeEnd   = int(result['time2']) + 1
+                timeEnd   = int(result['time2'])
+
+                try:
+                    instructionPointer = Memory.read(result['HEX(res.injection_ip)'])
+                    trace[timeEnd] = instructionPointer
+                except (KeyError, ValueError): pass
             except (KeyError, ValueError): continue
 
             bitPosition = position * dataClass.bits + bit
@@ -163,9 +168,9 @@ def parseResults(filename, classify, dataClass):
 
             if bitPosition not in data:
                 data[bitPosition] = {}
-            data[bitPosition][timeStart, timeEnd] = value
+            data[bitPosition][timeStart, timeEnd + 1] = value
 
-    return data
+    return data, trace.items()
 
 def createRegisterLabels():
     labels = []
@@ -305,23 +310,13 @@ def printStatus(status):
 def main():
     arguments = parseArguments()
     binary = arguments.binary
-    trace  = arguments.trace
     
     root = Tk()
 
     timeLabels = {}
-    if binary is not None and trace is not None:
-        printStatus("Create symbol table ...")
-        symbolTable = createSymbolTable(arguments.binary)
-        printStatus("Done")
-
-        printStatus("Process instruction pointer trace ...")
-        timeLabels = processInstructionPointerTrace(arguments.trace, symbolTable)
-        printStatus("Done")
-
     if arguments.register:
         printStatus("Parse register test results ...")
-        data = parseResults(arguments.data, ResultType.classify, Register)
+        data, trace = parseResults(arguments.data, ResultType.classify, Register)
         printStatus("Done")
 
         printStatus("Create register labels ...")
@@ -330,11 +325,20 @@ def main():
 
     else:
         printStatus("Parse memory test results ...")
-        data = parseResults(arguments.data, ResultType.classify, Memory)
+        data, trace = parseResults(arguments.data, ResultType.classify, Memory)
         printStatus("Done")
 
         printStatus("Create memory labels ...")
         positionLabels = createMemoryLabels(data, arguments.memory_usage, arguments.data_structures)
+        printStatus("Done")
+
+    if binary is not None:
+        printStatus("Create symbol table ...")
+        symbolTable = createSymbolTable(binary)
+        printStatus("Done")
+
+        printStatus("Create time labels ...")
+        timeLabels = createTimeLabels(trace, symbolTable)
         printStatus("Done")
 
     colorMap = {
