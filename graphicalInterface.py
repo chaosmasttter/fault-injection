@@ -1,6 +1,6 @@
 from Tkinter import Tk, Canvas, Scrollbar, HORIZONTAL, VERTICAL
 import ttk as themed
-import random
+import types
 
 class Visualisation(object):
     def __init__(self, parent, data, coloring,
@@ -28,7 +28,6 @@ class Visualisation(object):
             canvas['highlightthickness'] = 0
 
         self.plot()
-        self.setScrollRegions()
 
         self.scrollHorizontal = themed.Scrollbar(self.mainframe, orient = HORIZONTAL)
         self.scrollVertical   = themed.Scrollbar(self.mainframe, orient = VERTICAL)
@@ -52,15 +51,15 @@ class Visualisation(object):
         self.mainframe.bind_all('<Shift-Button-5>', lambda _: self.force
                                 (self.scrollAllHorizontal, 'scroll', + 1, 'units'))
 
-        def doUpdate(_): self.mainframe.update_idletasks()
-
-        self.mainframe.bind_all('<Control-Button-4>', doUpdate)
-        self.mainframe.bind_all('<Control-Button-5>', doUpdate)
+        self.mainframe.bind_all('<Control-Button-4>', self.force)
+        self.mainframe.bind_all('<Control-Button-5>', self.force)
 
         self.content.bind('<Control-Button-4>', lambda event: self.zoom(1.1, event))
         self.content.bind('<Control-Button-5>', lambda event: self.zoom(0.9, event))
 
         self.legend.bind('<Configure>', self.plotLegend)
+
+        self.content.bind('<Configure>', self.maybeHideLabels)
 
         # place everything on the screen
         self.timeLabels      .grid( column = 1, row = 0, sticky = 'nsew' )
@@ -73,6 +72,7 @@ class Visualisation(object):
         self.mainframe.columnconfigure( 1, weight = 1 )
         self.mainframe.rowconfigure(    1, weight = 1 )
 
+
     def scrollAllHorizontal(self, *arguments):
         for canvas in [self.content, self.timeLabels]:
             canvas.xview(*arguments)
@@ -81,8 +81,8 @@ class Visualisation(object):
         for canvas in [self.content, self.positionLabels]:
             canvas.yview(*arguments)
 
-    def force(self, function, *arguments):
-        function(*arguments)
+    def force(self, function = None, *arguments):
+        if isinstance(function, types.FunctionType): function(*arguments)
         self.mainframe.update_idletasks()
 
     def zoom(self, scale, event):
@@ -92,19 +92,54 @@ class Visualisation(object):
         self.timeLabels    .scale('all', x, y, scale, 1,   )
         self.positionLabels.scale('all', x, y, 1,     scale)
 
+        self.repositionTimeLabels()
         self.managePositionLabels()
-        self.setScrollRegions()
+        self.setScrollRegions(self.drawingRegions())
+
+    def maybeHideLabels(self, event):
+        height = self.timeLabels.height
+        if event.height + int(self.timeLabels['height']) < 2 * height or height > 200:
+            self.timeLabels['height'] = 0
+        else: self.timeLabels['height'] = height
+
+        width = self.positionLabels.width
+        if event.width + int(self.positionLabels['width']) < 2 * width or width > 200:
+            self.positionLabels['width'] = 0
+        else: self.positionLabels['width'] = width
+
+    def repositionTimeLabels(self):
+        self.timeLabels.delete('line')
+
+        textSize = self.getDefaultTextSize(self.timeLabels)
+        offset = {}
+        lineStart = []
+        for label in self.timeLabels.find_all():
+            lowerX, lowerY, upperX, upperY = self.timeLabels.bbox(label)
+
+            line = 0
+            while line in offset and lowerX < offset[line]: line += 1
+            self.timeLabels.move(label, 0, line * textSize - lowerY)
+            offset[line] = upperX
+            lineStart.append((lowerX, upperY))
+
+        lines = offset.keys()
+        lines.append(0)
+        maxy = textSize * max(lines) + textSize / 2
+        for x, y in lineStart:
+            self.timeLabels.create_line(x, y, x, maxy, tags = 'line', fill = 'grey')
+        self.timeLabels.tag_lower('line')
 
     def maybeHidePositionLabel(self, label):
         box = self.positionLabels.bbox(label)
         overlapping = len(self.positionLabels.find_overlapping(*box)) - 1
         if overlapping != 0:
             self.positionLabels.itemconfigure(label, state = 'hidden')
-        
 
     def managePositionLabels(self):
-        for label in self.positionLabels.find_all():
-            self.positionLabels.itemconfigure(label, state = 'normal')
+        self.positionLabels.itemconfigure('all', state = 'normal')
+        labels = list(self.positionLabels.find_all())
+        labels.reverse()
+        for label in labels:
             self.maybeHidePositionLabel(label)
 
     def plot(self):
@@ -185,7 +220,7 @@ class Visualisation(object):
 
         offset = {}
         textSize = self.getDefaultTextSize(self.timeLabels)
-        lineStart = {}
+        lineStart = []
 
         for time, text in self.timeLabeling:
             time *= 2
@@ -195,32 +230,30 @@ class Visualisation(object):
             label = createLabel(self.timeLabels, text, (time, line * textSize))
             _, _, x, y = self.timeLabels.bbox(label)
             offset[line] = x
-            lineStart[time] = y
+            lineStart.append((time, y))
 
-        try:
-            height = self.timeLabels.bbox('all')[3] + textSize / 2
-            for x, y in lineStart.items():
-                self.timeLabels.create_line(
-                    x, y, x, height, tags = 'line', fill = 'grey')
-                self.timeLabels.tag_lower('line')
-        except TypeError: pass # if the canvas is empty bbox('all') returns no tuple
+        lines = offset.keys()
+        lines.append(0)
+        maxy = textSize * max(lines) + textSize / 2
+        for x, y in lineStart:
+            self.timeLabels.create_line(x, y, x, maxy, tags = 'line', fill = 'grey')
+        self.timeLabels.tag_lower('line')
 
-        try:
-            lowerX, _, upperX, upperY = self.content.bbox('all')
-            for label, time in verticalLines.items():
-                self.timeLabels.line[label] = self.content.create_line(
-                    time, 0, time, upperY)
-                hideLine(label, self.timeLabels)
-            for label, position in horizontalLines.items():
-                self.positionLabels.line[label] = self.content.create_line(
-                    lowerX, position, upperX, position)
-                hideLine(label, self.positionLabels)
-            for position in extraHorizontalLines:
-                self.content.create_line(lowerX, position, upperX, position,
-                                         fill = 'grey')
-        except TypeError:
-            def showLine(line, canvas): pass
-            def hideLine(line, canvas): pass
+        drawingRegions = self.drawingRegions()
+        lowerX, upperX, lowerY, upperY, _, _, _, _ = drawingRegions
+
+        for label, time in verticalLines.items():
+            self.timeLabels.line[label] = self.content.create_line(
+                time, lowerY, time, upperY)
+            hideLine(label, self.timeLabels)
+        for label, position in horizontalLines.items():
+            self.positionLabels.line[label] = self.content.create_line(
+                lowerX, position, upperX, position)
+            hideLine(label, self.positionLabels)
+        for position in extraHorizontalLines:
+            self.content.create_line(lowerX, position, upperX, position, fill = 'grey')
+
+        self.setScrollRegions(drawingRegions)
 
     def plotLegend(self, event):
         self.legend.delete('all')
@@ -251,54 +284,57 @@ class Visualisation(object):
 
         self.legend['height'] = yend
 
-    def setScrollRegions(self):
-        contentBoundingBox = self.content.bbox('all')
-        timeLabelsBoundingBox = self.timeLabels.bbox('all')
-        positionLabelsBoundingBox = self.positionLabels.bbox('all')
-
-        if contentBoundingBox is not None and timeLabelsBoundingBox is not None:
-            lowerX = min(contentBoundingBox[0], timeLabelsBoundingBox[0])
-            upperX = max(contentBoundingBox[2], timeLabelsBoundingBox[2])
-        elif contentBoundingBox is not None:
-            lowerX = contentBoundingBox[0]
-            upperX = contentBoundingBox[2]
-        elif timeLabelsBoundingBox is not None:
-            lowerX = timeLabelsBoundingBox[0]
-            upperX = timeLabelsBoundingBox[2]
-        else:
-            lowerX = 0
-            upperX = 0
-
-        if contentBoundingBox is not None and positionLabelsBoundingBox is not None:
-            lowerY = min(contentBoundingBox[1], positionLabelsBoundingBox[1])
-            upperY = max(contentBoundingBox[3], positionLabelsBoundingBox[3])
-        elif contentBoundingBox is not None:
-            lowerY = contentBoundingBox[1]
-            upperY = contentBoundingBox[3]
-        elif positionLabelsBoundingBox is not None:
-            lowerY = positionLabelsBoundingBox[1]
-            upperY = positionLabelsBoundingBox[3]
-        else:
-            lowerY = 0
-            upperY = 0
-
+    def setScrollRegions(self, drawingRegions):
+        lowerX, upperX, lowerY, upperY, \
+        timeLabelsLowerY, timeLabelsUpperY, \
+        positionLabelsLowerX, positionLabelsUpperX = drawingRegions
+        
         self.content['scrollregion'] = lowerX, lowerY, upperX, upperY
 
-        try:
-            timeLabelsLowerY = timeLabelsBoundingBox[1]
-            timeLabelsUpperY = timeLabelsBoundingBox[3]
-        except TypeError: timeLabelsLowerY, timeLabelsUpperY = 0, 0
         self.timeLabels['scrollregion'] = lowerX, timeLabelsLowerY, \
                                           upperX, timeLabelsUpperY
         self.timeLabels['height'] = timeLabelsUpperY - timeLabelsLowerY
+        self.timeLabels.height = int(self.timeLabels['height'])
 
-        try:
-            positionLabelsLowerX = positionLabelsBoundingBox[0]
-            positionLabelsUpperX = positionLabelsBoundingBox[2]
-        except TypeError: positionLabelsLowerX, positionLabelsUpperX = 0, 0
         self.positionLabels['scrollregion'] = positionLabelsLowerX, lowerY, \
                                               positionLabelsUpperX, upperY
         self.positionLabels['width'] = positionLabelsUpperX - positionLabelsLowerX
+        self.positionLabels.width = int(self.positionLabels['width'])
+
+    def drawingRegions(self):
+        contentBox = self.content.bbox('all')
+        timeLabelsBox = self.timeLabels.bbox('all')
+        positionLabelsBox = self.positionLabels.bbox('all')
+
+        if contentBox is None:
+            if timeLabelsBox is None: timeLabelsBox = 0, 0, 0, 0
+            lowerX, timeLabelsLowerY, upperX, timeLabelsUpperY = timeLabelsBox
+
+            if positionLabelsBox is None: positionLabelsBox = 0, 0, 0, 0
+            positionLabelsLowerX, lowerY, positionLabelsUpperX, upperY = positionLabelsBox
+
+        else:
+            if timeLabelsBox is None:
+                lowerX, upperX = contentBox[0], contentBox[2]
+                timeLabelsLowerY, timeLabelsUpperY = 0, 0
+            else:
+                lowerX = min(contentBox[0], timeLabelsBox[0])
+                upperX = max(contentBox[2], timeLabelsBox[2])
+                timeLabelsLowerY = timeLabelsBox[1]
+                timeLabelsUpperY = timeLabelsBox[3]
+
+            if positionLabelsBox is None:
+                lowerY, upperY = contentBox[1], contentBox[3]
+                positionLabelsLowerX, positionLabelsUpperX = 0, 0
+            else:
+                lowerY = min(contentBox[1], positionLabelsBox[1])
+                upperY = max(contentBox[3], positionLabelsBox[3])
+                positionLabelsLowerX = positionLabelsBox[0]
+                positionLabelsUpperX = positionLabelsBox[2]
+
+        return (lowerX, upperX, lowerY, upperY,
+                timeLabelsLowerY, timeLabelsUpperY,
+                positionLabelsLowerX, positionLabelsUpperX)
 
     @staticmethod
     def getDefaultTextSize(canvas):
