@@ -95,14 +95,15 @@ class Visualisation(object):
         self.positionLabels.scale('all', x, y, 1,     scale)
 
         self.manageLabels()
+
     def manageLabels(self, event = None):
         self.manageTimeLabels()
         self.managePositionLabels()
         self.setScrollRegions(self.drawingRegions())
 
         if event is not None:
-            if self.timeLabels['height'] > event.height: self.timeLabels['height'] = 0
-            if self.positionLabels['width'] > event.width: self.positionLabels['width'] = 0
+            if int(self.timeLabels['height']) > event.height: self.timeLabels['height'] = 0
+            if int(self.positionLabels['width']) > event.width: self.positionLabels['width'] = 0
 
     def manageTimeLabels(self, event = None):
         self.timeLabels.delete('line')
