@@ -10,7 +10,21 @@ from argparse import ArgumentParser
 from Tkinter import Tk
 from graphicalInterface import Visualisation
 
-class ResultType:
+class Result:
+    """
+    Result class describing the possible experiment results.
+
+    Results are static defined constants. 
+    Possible result constants are:
+    - OK
+    - WRONG
+    - ASSERT_FAILED
+    - DOUBLE_FAULT
+    - GENERAL_PROTECTION_FAULT
+    - USER_ERROR
+    - OTHER_ERROR
+    """
+
     OK, \
     WRONG, \
     ASSERT_FAILED, \
@@ -19,50 +33,103 @@ class ResultType:
     USER_ERROR, \
     OTHER_ERROR = range(7)
 
-    @staticmethod
-    def classify(result):
-        resultType = result['resulttype']
-        output     = result['output']
+    bit = None
+    register = None
+    address = None
+    instructionPointer = None
+    timeStart = None
+    timeEnd = None
+    resultType = None
+    output = None
 
-        if resultType == "DONE":
-            return ResultType.OK
+    def __init__(self, names):
+        self.parsers = []
 
-        if re.search("DOUBLE FAULT", output):
-            return ResultType.DOUBLE_FAULT
-        elif re.search("General Protection", output):
-            return ResultType.GENERAL_PROTECTION_FAULT
-        elif re.search("L4Re.*page fault", output):
-            return ResultType.USER_ERROR
-        elif re.search("L4Re.*unhandled exception", output):
-            return ResultType.USER_ERROR
-        elif re.search("MOE.*rm", output):
-            return ResultType.USER_ERROR
-        elif re.search("Return reboots", output):
-            return ResultType.DOUBLE_FAULT
-        elif re.search("ASSERTION", output):
-            return ResultType.ASSERT_FAILED
-        elif re.search("src\/kern\/context.cpp:1283", output):
-            return ResultType.ASSERT_FAILED
-        elif re.search("src\/kern\/ia32\/thread-ia32.cpp:65", output):
-            return ResultType.ASSERT_FAILED
-        elif re.search("src\/kern\/ia32\/thread-ia32.cpp:136", output):
-            return ResultType.ASSERT_FAILED
-        elif re.search("src\/kern\/ia32\/mem_space-ia32.cpp:185", output):
-            return ResultType.ASSERT_FAILED
-        elif re.search("src/kern/mapdb.cpp:609", output):
-            return ResultType.ASSERT_FAILED
-        elif re.search("N_FAILED", output):
-            return ResultType.ASSERT_FAILED
-        elif re.search("Error: Item", output):
-            return ResultType.WRONG # that's a (detected) SDC actually...
+        for name in names:
+            if re.search('HEX', name): base = 16
+            else: base = 10
 
-        elif resultType == "WRONG":
-            return ResultType.WRONG
+            if re.search('bit_offset', name):
+                def parseBit(result):
+                    self.bit = int(result[name], base)
+                self.parsers.append(parseBit)
+            elif re.search('register_offset', name):
+                def parseRegister(result):
+                    self.register = Register.read(result[name])
+                self.parsers.append(parseRegister)
+            elif re.search('injection_address', name):
+                def parseAddress(result):
+                    self.address = Memory.read(result[name], base)
+                self.parsers.append(parseAddress)
+            elif re.search('injection_ip', name):
+                def parseInstructionPointer(result):
+                    self.instructionPointer = Memory.read(result[name], base)
+                self.parsers.append(parseInstructionPointer)
+            elif re.search('time1', name):
+                def parseStartTime(result):
+                    self.startTime = int(result[name], base)
+                self.parsers.append(parseStartTime)
+            elif re.search('time2', name):
+                def parseEndTime(result):
+                    self.endTime = int(result[name], base)
+                self.parsers.append(parseEndTime)
+            elif re.search('resulttype', name):
+                def parseResultType(result):
+                    self.resultType = result[name]
+                self.parsers.append(parseResultType)
+            elif re.search('output', name):
+                def parseOutput(result):
+                    self.output = result[name]
+                self.parsers.append(parseOutput)
+
+    def classify(self):
+        """
+        Get result constant corresponding to the experiment result.
+        """
+
+        if self.resultType == "DONE":
+            return Result.OK
+
+        elif re.search("DOUBLE FAULT", self.output):
+            return Result.DOUBLE_FAULT
+        elif re.search("General Protection", self.output):
+            return Result.GENERAL_PROTECTION_FAULT
+        elif re.search("L4Re.*page fault", self.output):
+            return Result.USER_ERROR
+        elif re.search("L4Re.*unhandled exception", self.output):
+            return Result.USER_ERROR
+        elif re.search("MOE.*rm", self.output):
+            return Result.USER_ERROR
+        elif re.search("Return reboots", self.output):
+            return Result.DOUBLE_FAULT
+        elif re.search("ASSERTION", self.output):
+            return Result.ASSERT_FAILED
+        elif re.search("src\/kern\/context.cpp:1283", self.output):
+            return Result.ASSERT_FAILED
+        elif re.search("src\/kern\/ia32\/thread-ia32.cpp:65", self.output):
+            return Result.ASSERT_FAILED
+        elif re.search("src\/kern\/ia32\/thread-ia32.cpp:136", self.output):
+            return Result.ASSERT_FAILED
+        elif re.search("src\/kern\/ia32\/mem_space-ia32.cpp:185", self.output):
+            return Result.ASSERT_FAILED
+        elif re.search("src/kern/mapdb.cpp:609", self.output):
+            return Result.ASSERT_FAILED
+        elif re.search("N_FAILED", self.output):
+            return Result.ASSERT_FAILED
+        elif re.search("Error: Item", self.output):
+            return Result.WRONG
+
+        elif self.resultType == "WRONG":
+            return Result.WRONG
         else:
-            return ResultType.OTHER_ERROR
+            return Result.OTHER_ERROR
+
+    def parse(self, result):
+        for parser in self.parsers:
+            try: parser(result)
+            except ValueError: continue
 
 class Register(object):
-    descriptor = 'register_offset'
     bits = 32
     count = 8
 
@@ -92,14 +159,18 @@ class Register(object):
         if number == Register.EDI: return 'EDI'
         raise ValueError('Register.show: not a register number')
 
+    @staticmethod
+    def bitPosition(result):
+        if result.bit is not None and result.register is not None:
+            result.register * Register.bits + result.bit
+    
 class Memory(object):
-    descriptor = 'HEX(res.injection_address)'
     bits = 8
 
     @staticmethod
-    def read(string):
+    def read(string, base):
         try:
-            address = long(string, 16)
+            address = long(string, base)
         except (ValueError, TypeError):
             raise ValueError('Memory.read: not a memory address')
         if address < 0:
@@ -110,14 +181,29 @@ class Memory(object):
     def show(address):
         return "0x{:X}".format(address)
 
+    @staticmethod
+    def bitPosition(result):
+        if result.bit is not None and result.address is not None:
+            return result.address * Memory.bits + result.bit
+
 def createSymbolTable(filename):
+    """
+    Return a dictionary of address to symbol mappings for the given file.
+
+    The filename should correspond to an C++ object file.
+
+    Extract the symbols using the tool 'nm'.
+    Ignore the type of the symbol.
+    """
+
     symbolTable = {}
 
+    # use '-C' to demangle C++ names
     for line in check_output(['nm', '-C', filename]).strip().split('\n'):
-        values = line.split(' ', 2)
+        values = line.split(' ', 2) # [ 'address', 'symbol type', 'symbol name' ]
 
         try:
-            address = int(values[0], 16)
+            address = Memory.read(values[0], 16) 
             name    = values[2]
         except (IndexError, ValueError): continue
 
@@ -126,49 +212,63 @@ def createSymbolTable(filename):
     return symbolTable
 
 def createTimeLabels(trace, symbolTable):
+    """
+    Return a list of time-label-pairs.
+
+    Arguments:
+      trace - list of time-instruction pointer-pairs
+      symbolTable - dictionary of address-symbol-mappings
+
+    Process the trace in the order of the times.
+    Foreach instruction pointer in the trace:
+      Lookup the symbol with the biggest address 
+      smaller or equal to the instruction pointer.
+      If the symbol is not the same as for the previous instruction pointer:
+        Append the time and symbol to the final list.
+    """
+
+    # final list of time-label-pairs
     labels = []
 
+    # sorted list of all addresses in the symbol table
     symbolAddresses = sorted(symbolTable)
 
     lastSymbol = None
     for time, instructionPointer in sorted(trace):
-        try: 
+        try:
+            # the biggest address smaller or equal to the instruction pointer
             address = list(takewhile(lambda address: address < instructionPointer,
                                      symbolAddresses))[-1]
+            # lookup the corresponding symbol and extract the function name
             symbol = symbolTable[address].split('(')[0]
 
+            # only add a label if the symbol changed
             if symbol != lastSymbol:
                 labels.append((time, symbol))
-            lastSymbol = symbol
+                lastSymbol = symbol
         except IndexError: pass
 
     return labels
 
-def parseResults(filename, classify, dataClass):
+def parseResults(filename, dataClass):
     data = {}
     trace = {}
 
     with open(filename, 'rU') as resultFile:
-        for result in csv.DictReader(resultFile):
-            try:
-                position = dataClass.read(result[dataClass.descriptor])
-                bit      = int(result['bit_offset'])
+        reader = csv.DictReader(resultFile)
+        result = Result(reader.fieldnames)
+        for line in reader:
+            result.parse(line)
+            bitPosition = dataClass.bitPosition(result)
 
-                timeStart = int(result['time1'])
-                timeEnd   = int(result['time2'])
+            if result.instructionPointer is not None and result.endTime is not None:
+                trace[result.endTime] = result.instructionPointer
 
-                try:
-                    instructionPointer = Memory.read(result['HEX(res.injection_ip)'])
-                    trace[timeEnd] = instructionPointer
-                except (KeyError, ValueError): pass
-            except (KeyError, ValueError): continue
-
-            bitPosition = position * dataClass.bits + bit
-            value       = classify(result)
-
-            if bitPosition not in data:
-                data[bitPosition] = {}
-            data[bitPosition][timeStart, timeEnd + 1] = value
+            if bitPosition is not None \
+              and result.startTime is not None and result.endTime is not None:
+                if bitPosition not in data:
+                    data[bitPosition] = {}
+                data[bitPosition][result.startTime, result.endTime + 1] = result.classify()
 
     return data, trace.items()
 
@@ -188,7 +288,7 @@ def createMemoryLabels(data, usage, structures):
         with open(usage, 'rU') as usageFile:
             for line in csv.reader(usageFile, delimiter = ' '):
                 try:
-                    address = Memory.read(line[0])
+                    address = Memory.read(line[0], 16)
                     size = int(line[1])
                     name = line[2]
                 except (IndexError, ValueError): continue
@@ -283,6 +383,11 @@ def createMemoryLabels(data, usage, structures):
                 outer.append((cluster, []))
         labels.append(((name, ''), outer))
 
+    for lower, upper in clusterIterator:
+        lowerLabel = Memory.show(lower >> 3)
+        upperLabel = Memory.show(lower >> 3)
+        labels.append(((lowerLabel, upperLabel), [((lower, upper), [])]))
+
     return labels
 
 def parseArguments():
@@ -316,7 +421,7 @@ def main():
     timeLabels = {}
     if arguments.register:
         printStatus("Parse register test results ...")
-        data, trace = parseResults(arguments.data, ResultType.classify, Register)
+        data, trace = parseResults(arguments.data, Register)
         printStatus("Done")
 
         printStatus("Create register labels ...")
@@ -325,7 +430,7 @@ def main():
 
     else:
         printStatus("Parse memory test results ...")
-        data, trace = parseResults(arguments.data, ResultType.classify, Memory)
+        data, trace = parseResults(arguments.data, Memory)
         printStatus("Done")
 
         printStatus("Create memory labels ...")
@@ -342,23 +447,23 @@ def main():
         printStatus("Done")
 
     colorMap = {
-        ResultType.OK:                       'green',
-        ResultType.WRONG:                    'red',
-        ResultType.ASSERT_FAILED:            'blue',
-        ResultType.DOUBLE_FAULT:             'yellow',
-        ResultType.GENERAL_PROTECTION_FAULT: 'purple',
-        ResultType.USER_ERROR:               'darkgreen',
-        ResultType.OTHER_ERROR:              'orange'
+        Result.OK:                       'green',
+        Result.WRONG:                    'red',
+        Result.ASSERT_FAILED:            'blue',
+        Result.DOUBLE_FAULT:             'yellow',
+        Result.GENERAL_PROTECTION_FAULT: 'purple',
+        Result.USER_ERROR:               'darkgreen',
+        Result.OTHER_ERROR:              'orange'
     }
 
     explanation = {
-        ResultType.OK:                       'correct',
-        ResultType.WRONG:                    'silent data corruption',
-        ResultType.ASSERT_FAILED:            'assertion failed',
-        ResultType.DOUBLE_FAULT:             'double fault',
-        ResultType.GENERAL_PROTECTION_FAULT: 'general protection fault',
-        ResultType.USER_ERROR:               'user error',
-        ResultType.OTHER_ERROR:              'other error'
+        Result.OK:                       'correct',
+        Result.WRONG:                    'silent data corruption',
+        Result.ASSERT_FAILED:            'assertion failed',
+        Result.DOUBLE_FAULT:             'double fault',
+        Result.GENERAL_PROTECTION_FAULT: 'general protection fault',
+        Result.USER_ERROR:               'user error',
+        Result.OTHER_ERROR:              'other error'
     }
 
     printStatus("Create visualisation frame ...")
