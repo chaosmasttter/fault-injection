@@ -50,35 +50,35 @@ class Result:
             else: base = 10
 
             if re.search('bit_offset', name):
-                def parseBit(result):
+                def parseBit(result, name = name, base = base):
                     self.bit = int(result[name], base)
                 self.parsers.append(parseBit)
             elif re.search('register_offset', name):
-                def parseRegister(result):
+                def parseRegister(result, name = name):
                     self.register = Register.read(result[name])
                 self.parsers.append(parseRegister)
             elif re.search('injection_address', name):
-                def parseAddress(result):
+                def parseAddress(result, name = name, base = base):
                     self.address = Memory.read(result[name], base)
                 self.parsers.append(parseAddress)
             elif re.search('injection_ip', name):
-                def parseInstructionPointer(result):
+                def parseInstructionPointer(result, name = name, base = base):
                     self.instructionPointer = Memory.read(result[name], base)
                 self.parsers.append(parseInstructionPointer)
             elif re.search('time1', name):
-                def parseStartTime(result):
+                def parseStartTime(result, name = name, base = base):
                     self.startTime = int(result[name], base)
                 self.parsers.append(parseStartTime)
             elif re.search('time2', name):
-                def parseEndTime(result):
+                def parseEndTime(result, name = name, base = base):
                     self.endTime = int(result[name], base)
                 self.parsers.append(parseEndTime)
             elif re.search('resulttype', name):
-                def parseResultType(result):
+                def parseResultType(result, name = name):
                     self.resultType = result[name]
                 self.parsers.append(parseResultType)
             elif re.search('output', name):
-                def parseOutput(result):
+                def parseOutput(result, name = name):
                     self.output = result[name]
                 self.parsers.append(parseOutput)
 
@@ -162,8 +162,8 @@ class Register(object):
     @staticmethod
     def bitPosition(result):
         if result.bit is not None and result.register is not None:
-            result.register * Register.bits + result.bit
-    
+            return result.register * Register.bits + result.bit
+
 class Memory(object):
     bits = 8
 
@@ -327,66 +327,26 @@ def createMemoryLabels(data, usage, structures):
                 if structure != []:
                     dataStructures[structureName] = structure
 
-    labels = []
     maximalDistance = 8 * 8
-
     cluster = []
-    lastClusterEnd = None
 
     for position in sorted(data.keys()):
-        if lastClusterEnd is None or lastClusterEnd + maximalDistance < position:
-            cluster.append((position, position))
-            lastClusterEnd = position
-        else:
-            cluster[-1] = cluster[-1][0], position
+        if cluster:
+            lower, upper = cluster.pop()
+            if position < upper + maximalDistance:
+                cluster.append((lower, position))
+                continue
+            cluster.append((lower, upper))
+        cluster.append((position, position))
 
-    clusterIterator = iter(cluster)
-    for (start, end), name in sorted(memoryUsage):
-        structureCluster = []
-        for lower, upper in clusterIterator:
-            if lower >= end:
-                clusterIterator = chain([(lower, upper)], clusterIterator)
-                break
-            elif upper <= start:
-                lowerLabel = Memory.show(lower >> 3)
-                upperLabel = Memory.show(lower >> 3)
-                labels.append(((lowerLabel, upperLabel), [((lower, upper), [])]))
-            elif lower < start:
-                newCluster = [(lower, start), (start, upper)]
-                clusterIterator = chain(newCluster, clusterIterator)
-            elif upper > end:
-                newCluster = [(lower, end), (end, upper)]
-                clusterIterator = chain(newCluster, clusterIterator)
-            else:
-                structureCluster.append((lower, upper))
-        if structureCluster == []: continue
+    labels = []
 
-        outer = []
-        try:
-            fieldIterator = iter(sorted(dataStructures[name]))
-            for lower, upper in structureCluster:
-                lastField = None
-                inner = []
-                for offset, field in fieldIterator:
-                    position = start + offset * Memory.bits
-                    if position < lower:
-                        lastField = position, field 
-                    elif position < upper:
-                        inner.append((position, field))
-                    else: break
-                if lastField is not None:
-                    position, field = lastField
-                    outer.append(((position, position), [(position, field)]))
-                outer.append(((lower, upper), inner))
-        except KeyError:
-            for cluster in structureCluster:
-                outer.append((cluster, []))
-        labels.append(((name, ''), outer))
+    superstructures = []
+    structures = sorted(memoryUsage)
 
-    for lower, upper in clusterIterator:
-        lowerLabel = Memory.show(lower >> 3)
-        upperLabel = Memory.show(lower >> 3)
-        labels.append(((lowerLabel, upperLabel), [((lower, upper), [])]))
+    while structures or superstructures:
+        while cluster:
+            pass
 
     return labels
 

@@ -107,8 +107,10 @@ class Visualisation(object):
 
     def manageTimeLabels(self, event = None):
         self.timeLabels.delete('line')
+        self.timeLabels.itemconfigure('all', state = 'normal')
 
         textSize = self.timeLabels.defaultTextSize
+
         offset = {}
         lineStart = []
 
@@ -132,11 +134,11 @@ class Visualisation(object):
             maxY = max(upperY, maxY)
 
         if not freeSpace:
-            self.timeLabels['height'] = 0
+            self.timeLabels.itemconfigure('all', state = 'hidden')
             return
 
         if maxY is not None:
-            height = maxY + textSize / 2
+            height = maxY + textSize
             for x, y in lineStart:
                 self.timeLabels.create_line(x, y, x, height, tags = 'line', fill = 'grey')
             self.timeLabels.tag_lower('line')
@@ -203,16 +205,16 @@ class Visualisation(object):
         removeTag = False
         upperLabel = ''
 
-        while positions != [] or parents != []:
+        while positions or parents:
             while isinstance(positions, list):
-                if positions == []: break
+                if not positions: break
 
                 labels, subpositions = positions.pop()
                 lowerLabel, upperLabel = labels
 
                 indentation += 10
 
-                if lowerLabel != '':
+                if lowerLabel:
                     label = createLabel(lowerLabel, offset, True, indentation)
                     tags.append('{:x}'.format(label))
                     self.positionLabels.itemconfigure(label, tags = tuple(tags))
@@ -237,7 +239,7 @@ class Visualisation(object):
                     except KeyError: pass
                 offset += upper - lower
 
-            if upperLabel != '':
+            if upperLabel:
                 label = createLabel(upperLabel, offset, False, indentation)
                 offset += textSize
             offset += textSize
