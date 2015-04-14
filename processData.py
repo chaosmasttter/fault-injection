@@ -291,7 +291,9 @@ def createMemoryLabels(data, usage, structures):
                     address = Memory.read(line[0], 16)
                     size = int(line[1])
                     name = line[2]
-                except (IndexError, ValueError): continue
+                except (IndexError, ValueError):
+                    print 'unable to read'
+                    continue
                 position = address * Memory.bits, (address + size) * Memory.bits
                 memoryUsage.append((position, name))
 
@@ -328,39 +330,38 @@ def createMemoryLabels(data, usage, structures):
                     dataStructures[structureName] = structure
 
     maximalDistance = 8 * 8
-    cluster = []
+    clusters = []
 
     for position in sorted(data.keys()):
-        if cluster:
-            lower, upper = cluster.pop()
+        if clusters:
+            lower, upper = cluster = clusters.pop()
             if position < upper + maximalDistance:
-                cluster.append((lower, position))
+                clusters.append((lower, position))
                 continue
-            cluster.append((lower, upper))
-        cluster.append((position, position))
+            clusters.append(cluster)
+        clusters.append((position, position))
+    clusters.reverse()
 
     superlabels = []
     labels = []
 
     superstructures = []
-    structures = sorted(memoryUsage)
+    structures = sorted(memoryUsage, reverse = True)
 
-    while cluster:
-        lower, upper = cluster.pop()
+    while clusters:
+        lower, upper = cluster = clusters.pop()
         if structures:
-           (start, end), name = structures.pop()
+           (start, end), name = structure = structures.pop()
 
            if lower < start:
                if upper > start:
-                   cluster.append((start, upper))
-                   upper = start
+                   clusters.append((start, upper))
+                   cluster = lower, start
 
-               if superstructures:
-                   label = '', ''
-               else:
-                   label = Memory.show(lower >> 3), Memory.show(upper >> 3)
-               labels.append((label, (lower, upper)))
-
+               if superstructures: label = '', ''
+               else: label = Memory.show(lower >> 3), Memory.show(upper >> 3)
+               labels.append((label, cluster))
+               structures.append(structure)
            elif upper <= end:
                if name in dataStructures:
                    labels.append((name, ''))
@@ -370,19 +371,15 @@ def createMemoryLabels(data, usage, structures):
                    superstructures.append(structures)
                    structures = []
 
-                   for offset, name in sorted(dataStructures[name], reversed = True):
-                       position = start + Memory.bits * offset
-                       structures.append((position, end))
-                       end = position
-                   structures.reverse()
-
-               else: labels.append(((name, ''), (lower, upper)))
-
+                   for offset, name in sorted(dataStructures[name], reverse = True):
+                       position = start + Memory.bits * offset, end
+                       structures.append((position, name))
+                       end = position[0]
+               else: labels.append(((name, ''), cluster))
            elif lower < end:
-               structures.append(((start, end), name))
-               cluster.extend([(lower, end), (end, upper)])
-           else: cluster.append((lower, upper))
-
+               structures.append(structure)
+               clusters.extend([(lower, end), (end, upper)])
+           else: clusters.append(cluster)
         else:
             if superstructures:
                 structures = superstructures.pop()
@@ -393,11 +390,12 @@ def createMemoryLabels(data, usage, structures):
                 labels.append((label, sublabels))
             else: break
 
-    while cluster:
+    while clusters:
         labels.append(((Memory.show(lower >> 3),
                         Memory.show(upper >> 3)),
                        (lower, upper)))
 
+    print labels
     return labels
 
 def parseArguments():
