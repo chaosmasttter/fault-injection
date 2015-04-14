@@ -339,14 +339,64 @@ def createMemoryLabels(data, usage, structures):
             cluster.append((lower, upper))
         cluster.append((position, position))
 
+    superlabels = []
     labels = []
 
     superstructures = []
     structures = sorted(memoryUsage)
 
-    while structures or superstructures:
-        while cluster:
-            pass
+    while cluster:
+        lower, upper = cluster.pop()
+        if structures:
+           (start, end), name = structures.pop()
+
+           if lower < start:
+               if upper > start:
+                   cluster.append((start, upper))
+                   upper = start
+
+               if superstructures:
+                   label = '', ''
+               else:
+                   label = Memory.show(lower >> 3), Memory.show(upper >> 3)
+               labels.append((label, (lower, upper)))
+
+           elif upper <= end:
+               if name in dataStructures:
+                   labels.append((name, ''))
+                   superlabels.append(labels)
+                   labels = []
+
+                   superstructures.append(structures)
+                   structures = []
+
+                   for offset, name in sorted(dataStructures[name], reversed = True):
+                       position = start + Memory.bits * offset
+                       structures.append((position, end))
+                       end = position
+                   structures.reverse()
+
+               else: labels.append(((name, ''), (lower, upper)))
+
+           elif lower < end:
+               structures.append(((start, end), name))
+               cluster.extend([(lower, end), (end, upper)])
+           else: cluster.append((lower, upper))
+
+        else:
+            if superstructures:
+                structures = superstructures.pop()
+
+                sublabels = labels
+                labels = superlabels.pop()
+                label = labels.pop()
+                labels.append((label, sublabels))
+            else: break
+
+    while cluster:
+        labels.append(((Memory.show(lower >> 3),
+                        Memory.show(upper >> 3)),
+                       (lower, upper)))
 
     return labels
 
