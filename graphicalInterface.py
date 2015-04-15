@@ -144,28 +144,50 @@ class Visualisation(object):
             self.timeLabels.tag_lower('line')
 
     def managePositionLabels(self, event = None):
-        self.positionLabels.itemconfigure('all', state = 'normal')
-        labels = list(self.positionLabels.find_all())
+        canvas = self.positionLabels
+
+        canvas.itemconfigure('all', state = 'normal')
+        labels = list(canvas.find_all())
+        upperLabels = []
         for label in labels:
-            aboveLine, lower, upper = self.positionLabels.labelInformation[label]
-            configuration = self.positionLabels.itemconfigure(label)
+            aboveLine, lower, upper = canvas.labelInformation[label]
+            configuration = canvas.itemconfig(label)
             if configuration['state'][4] == 'hidden': continue
             elif not configuration['text'][4]:
-                self.positionLabel.itemconfigure(label, state = 'hidden')
+                canvas.itemconfigure(label, state = 'hidden')
             elif aboveLine:
-                superlabel = self.positionLabels.find_below(label)
-                while superlabel is not None
-                and self.positionLabels.itemconfigure(superlabel)['state'][4] == 'hidden':
-                    superlabel = self.positionLabels.find_below(superlabel)
-                currentUpper = self.positionLabels.bbox(label)[3]
-                defaultOffset = upper - currentUpper
-                if superlabel is None:
-                    self.positionLabel.move(label, 0, defaultOffset)
+                upperLabels.append((label, lower, upper))
+            else:
+                store = label, lower, upper
+                while upperLabels:
+                    label, lower, upper = upperLabels.pop()
+                    superlabel = canvas.find_above(label)
+                    while superlabel and canvas.itemconfig(superlabel[0])['state'][4] == 'hidden':
+                        superlabel = canvas.find_above(superlabel[0])
+                    _, currentUpper, _, currentLower = canvas.bbox(label)
+                    if not superlabel:
+                        canvas.move(label, 0, upper - currentUpper)
+                    else:
+                        superLower = canvas.bbox(superlabel[0])[1]
+                        if superLower + currentLower - currentUpper < lower:
+                            canvas.itemconfigure(label, state = 'hidden')
+                        else:
+                            delta = min(superLower - currentUpper, upper - currentUpper)
+                            canvas.move(label, 0, delta)
+                label, lower, upper = store
+                superlabel = canvas.find_below(label)
+                while superlabel and canvas.itemconfig(superlabel[0])['state'][4] == 'hidden':
+                    superlabel = canvas.find_below(superlabel[0])
+                _, currentUpper, _, currentLower = canvas.bbox(label)
+                if not superlabel:
+                    canvas.move(label, 0, lower - currentLower)
                 else:
-                    superLower = self.positionLabels.bbox(superlabel)[1]
-                    if superLower < lower:
-                        self.positionLabel.itemconfigure(label, state = 'hidden')
-                    self.positionLabels.move(label, 0, min(superLower - currentUpper, defaultOffset))
+                    superUpper = canvas.bbox(superlabel[0])[3]
+                    if superUpper + currentUpper - currentLower < upper:
+                        canvas.itemconfigure(label, state = 'hidden')
+                    else:
+                        delta = min(superUpper - currentLower, lower - currentLower)
+                        canvas.move(label, 0, delta)
 
     def plot(self, timeLabels, positions):
         self.timeLabels.line = {}
@@ -185,6 +207,7 @@ class Visualisation(object):
             self.content.itemconfigure(line, fill = 'grey')
 
         def createLabel(text, distance, aboveLine = None, indentation = 0):
+            anchor = 'nw'
             if aboveLine is None:
                 canvas = self.timeLabels
                 position = distance, 0
@@ -192,9 +215,7 @@ class Visualisation(object):
             else:
                 canvas = self.positionLabels
                 position = indentation, distance
-
                 if aboveLine: anchor = 'sw'
-                else: anchor = 'nw'
 
             label = canvas.create_text(*position, text = text, anchor = anchor)
             canvas.tag_bind(label, '<Enter>',
@@ -256,10 +277,11 @@ class Visualisation(object):
             self.positionLabels.itemconfigure(label, tags = tuple(tags))
             indentation -= 10
             tag = tags.pop()
+
+            lowerLabel = int(tag[3:], 16)
             upperLabel = label
-            lowerLabel = int(tag[:3])
             middle = (upper + lower) / 2
-            self.positionLabels.labelInformation[lowerLabel] = Fase, lower, middle
+            self.positionLabels.labelInformation[lowerLabel] = False, lower, middle
             self.positionLabels.labelInformation[upperLabel] = True, middle, upper
 
         for time, text in sorted(timeLabels):
