@@ -3,7 +3,8 @@
 import re
 import csv
 import sys
-from itertools import chain, takewhile
+from itertools import takewhile
+from decimal import Decimal
 from struct import unpack
 from subprocess import check_output
 from argparse import ArgumentParser
@@ -348,39 +349,56 @@ def createMemoryLabels(data, usage, structures):
     superstructures = []
     structures = sorted(memoryUsage, reverse = True)
 
-    while clusters:
-        lower, upper = cluster = clusters.pop()
+    ends = [Decimal('Infinity')]
+
+    while clusters or superstructures:
         if structures:
-           (start, end), name = structure = structures.pop()
+            lower, upper = cluster = clusters.pop()
+            (start, end), name = structure = structures.pop()
 
-           if lower < start:
-               if upper > start:
-                   clusters.append((start, upper))
-                   cluster = lower, start
+            if lower < start:
+                if upper > start:
+                    clusters.append((start, upper))
+                    cluster = lower, start
 
-               if superstructures: label = '', ''
-               else: label = Memory.show(lower >> 3), Memory.show(upper >> 3)
-               labels.append((label, cluster))
-               structures.append(structure)
-           elif upper <= end:
-               if name in dataStructures:
-                   labels.append((name, ''))
-                   superlabels.append(labels)
-                   labels = []
+                if superstructures: label = '', ''
+                else: label = Memory.show(lower >> 3), Memory.show(upper >> 3)
+                labels.append((label, cluster))
+                structures.append(structure)
 
-                   superstructures.append(structures)
-                   structures = []
+            elif upper <= end:
+                labels.append((name, ''))
+                superlabels.append(labels)
+                labels = []
 
-                   for offset, name in sorted(dataStructures[name], reverse = True):
-                       position = start + Memory.bits * offset, end
-                       structures.append((position, name))
-                       end = position[0]
-               else: labels.append(((name, ''), cluster))
-           elif lower < end:
-               structures.append(structure)
-               clusters.extend([(lower, end), (end, upper)])
-           else: clusters.append(cluster)
+                superstructures.append(structures)
+                structures = []
+
+                ends.append(end)
+                clusters.append(cluster)
+
+                if name in dataStructures:
+                    for offset, name in sorted(dataStructures[name], reverse = True):
+                        position = start + Memory.bits * offset, end
+                        structures.append((position, name))
+                        end = position[0]
+
+            elif lower < end:
+                structures.append(structure)
+                clusters.extend([(lower, end), (end, upper)])
+            else: clusters.append(cluster)
+
         else:
+            end = ends.pop()
+            while clusters:
+                cluster = clusters.pop()
+                if end < cluster[1]:
+                    clusters.append(cluster)
+                    break
+                if superstructures: label = '', ''
+                else: label = Memory.show(lower >> 3), Memory.show(upper >> 3)
+                labels.append((label, cluster))
+
             if superstructures:
                 structures = superstructures.pop()
 
@@ -390,12 +408,6 @@ def createMemoryLabels(data, usage, structures):
                 labels.append((label, sublabels))
             else: break
 
-    while clusters:
-        labels.append(((Memory.show(lower >> 3),
-                        Memory.show(upper >> 3)),
-                       (lower, upper)))
-
-    print labels
     return labels
 
 def parseArguments():

@@ -205,6 +205,8 @@ class Visualisation(object):
         removeTag = False
         upperLabel = ''
 
+        positions.reverse()
+
         while positions or parents:
             while isinstance(positions, list):
                 if not positions: break
@@ -216,7 +218,7 @@ class Visualisation(object):
 
                 if lowerLabel:
                     label = createLabel(lowerLabel, offset, True, indentation)
-                    tags.append('{:x}'.format(label))
+                    tags.append('tag{:x}'.format(label))
                     self.positionLabels.itemconfigure(label, tags = tuple(tags))
                     removeTag = True
                     offset += textSize
@@ -242,7 +244,6 @@ class Visualisation(object):
             if upperLabel:
                 label = createLabel(upperLabel, offset, False, indentation)
                 offset += textSize
-            offset += textSize
 
             indentation -= 10
             if removeTag: tags.pop()
