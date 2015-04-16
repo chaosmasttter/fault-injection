@@ -154,7 +154,7 @@ class Visualisation(object):
             configuration = canvas.itemconfig(label)
             if configuration['state'][4] == 'hidden': continue
             elif not configuration['text'][4]:
-                canvas.itemconfigure(label, state = 'hidden')
+                canvas.itemconfigure('tag{:x}'.format(label), state = 'hidden')
             elif aboveLine:
                 upperLabels.append((label, lower, upper))
             else:
@@ -211,7 +211,6 @@ class Visualisation(object):
             if aboveLine is None:
                 canvas = self.timeLabels
                 position = distance, 0
-                anchor = 'nw'
             else:
                 canvas = self.positionLabels
                 position = indentation, distance
@@ -229,29 +228,29 @@ class Visualisation(object):
             return label
 
         tags = []
-        offset = 0
+        offset = None
         indentation = 0
         
         parents = []
         lowers = []
 
-        self.positionLabels.labelInformation = {}
-
         positions.reverse()
 
         while positions or parents:
+            if offset is None: offset = 0
+            else: offset += 10
+
             while isinstance(positions, list):
                 if not positions: break
 
                 labels, subpositions = positions.pop()
                 lowerLabel, upperLabel = labels
 
-                indentation += 10
-
-                label = createLabel(lowerLabel, offset, True, indentation)
+                label = createLabel(lowerLabel, offset, False, indentation)
                 tags.append('tag{:x}'.format(label))
                 self.positionLabels.itemconfigure(label, tags = tuple(tags))
                 
+                indentation += 10
                 parents.append((upperLabel, positions))
                 positions = subpositions
                 lowers.append(None)
@@ -271,18 +270,12 @@ class Visualisation(object):
                     except KeyError: pass
                 offset += upper - lower
 
+            indentation -= 10
             lower = lowers.pop()
             upperLabel, positions = parents.pop()
-            label = createLabel(upperLabel, offset, False, indentation)
+            label = createLabel(upperLabel, offset, True, indentation)
             self.positionLabels.itemconfigure(label, tags = tuple(tags))
-            indentation -= 10
             tag = tags.pop()
-
-            lowerLabel = int(tag[3:], 16)
-            upperLabel = label
-            middle = (upper + lower) / 2
-            self.positionLabels.labelInformation[lowerLabel] = False, lower, middle
-            self.positionLabels.labelInformation[upperLabel] = True, middle, upper
 
         for time, text in sorted(timeLabels):
             createLabel(text, time)
