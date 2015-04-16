@@ -144,50 +144,7 @@ class Visualisation(object):
             self.timeLabels.tag_lower('line')
 
     def managePositionLabels(self, event = None):
-        canvas = self.positionLabels
-
-        canvas.itemconfigure('all', state = 'normal')
-        labels = list(canvas.find_all())
-        upperLabels = []
-        for label in labels:
-            aboveLine, lower, upper = canvas.labelInformation[label]
-            configuration = canvas.itemconfig(label)
-            if configuration['state'][4] == 'hidden': continue
-            elif not configuration['text'][4]:
-                canvas.itemconfigure('tag{:x}'.format(label), state = 'hidden')
-            elif aboveLine:
-                upperLabels.append((label, lower, upper))
-            else:
-                store = label, lower, upper
-                while upperLabels:
-                    label, lower, upper = upperLabels.pop()
-                    superlabel = canvas.find_above(label)
-                    while superlabel and canvas.itemconfig(superlabel[0])['state'][4] == 'hidden':
-                        superlabel = canvas.find_above(superlabel[0])
-                    _, currentUpper, _, currentLower = canvas.bbox(label)
-                    if not superlabel:
-                        canvas.move(label, 0, upper - currentUpper)
-                    else:
-                        superLower = canvas.bbox(superlabel[0])[1]
-                        if superLower + currentLower - currentUpper < lower:
-                            canvas.itemconfigure(label, state = 'hidden')
-                        else:
-                            delta = min(superLower - currentUpper, upper - currentUpper)
-                            canvas.move(label, 0, delta)
-                label, lower, upper = store
-                superlabel = canvas.find_below(label)
-                while superlabel and canvas.itemconfig(superlabel[0])['state'][4] == 'hidden':
-                    superlabel = canvas.find_below(superlabel[0])
-                _, currentUpper, _, currentLower = canvas.bbox(label)
-                if not superlabel:
-                    canvas.move(label, 0, lower - currentLower)
-                else:
-                    superUpper = canvas.bbox(superlabel[0])[3]
-                    if superUpper + currentUpper - currentLower < upper:
-                        canvas.itemconfigure(label, state = 'hidden')
-                    else:
-                        delta = min(superUpper - currentLower, lower - currentLower)
-                        canvas.move(label, 0, delta)
+        pass
 
     def plot(self, timeLabels, positions):
         self.timeLabels.line = {}
@@ -228,37 +185,35 @@ class Visualisation(object):
             return label
 
         tags = []
-        offset = None
+        offset = 0
         indentation = 0
-        
-        parents = []
-        lowers = []
+        changeOffset = False
 
+        parents = []
         positions.reverse()
 
         while positions or parents:
-            if offset is None: offset = 0
-            else: offset += 10
-
             while isinstance(positions, list):
                 if not positions: break
 
+                if changeOffset: offset += 10
+                changeOffset = False
+
                 labels, subpositions = positions.pop()
                 lowerLabel, upperLabel = labels
-
+                
                 label = createLabel(lowerLabel, offset, False, indentation)
                 tags.append('tag{:x}'.format(label))
                 self.positionLabels.itemconfigure(label, tags = tuple(tags))
                 
                 indentation += 10
+
                 parents.append((upperLabel, positions))
                 positions = subpositions
-                lowers.append(None)
 
             if isinstance(positions, tuple):
                 lower, upper = positions
                 if lower > upper: lower, upper = upper, lower
-                lowers = [lower if x is None else x for x in lowers]
 
                 for position in range(lower, upper):
                     try:
@@ -269,13 +224,13 @@ class Visualisation(object):
                                width = 0, fill = self.coloring[value])
                     except KeyError: pass
                 offset += upper - lower
-
             indentation -= 10
-            lower = lowers.pop()
+
             upperLabel, positions = parents.pop()
             label = createLabel(upperLabel, offset, True, indentation)
             self.positionLabels.itemconfigure(label, tags = tuple(tags))
-            tag = tags.pop()
+            tags.pop()
+            changeOffset = True
 
         for time, text in sorted(timeLabels):
             createLabel(text, time)
