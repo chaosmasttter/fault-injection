@@ -145,7 +145,39 @@ class Visualisation(object):
             self.timeLabels.tag_lower('line')
 
     def managePositionLabels(self, event = None):
-        pass
+        self.positionLabels.itemconfigure('all', state = 'hidden')
+
+        structure = self.positionLabels.structure[:]
+        superstructure = []
+
+        while structure or superstructure:
+            while structure:
+                (lowerLabel, lowerFree, lowerText), (upperLabel, upperFree, upperText), substructure = structure.pop()
+                self.positionLabels.itemconfigure(lowerLabel, state = 'normal')
+                _, lower, _, upper = self.positionLabels.bbox(lowerLabel)
+                if lowerText:
+                    if lowerFree:
+                        self.positionLabels.move(lowerLabel, 0, lowerBound - lower)
+                        lowerBound += upper - lower
+                    else: lowerBound = upper
+                elif not lowerFree: lowerBound = lower
+
+                self.positionLabels.itemconfigure(upperLabel, state = 'normal')
+                _, lower, _, upper = self.positionLabels.bbox(upperLabel)
+                if upperText:
+                    if upperFree:
+                        self.positionLabels.move(upperLabel, 0, upperBound - upper)
+                        upperBound += lower - upper
+                    else: upperBound = lower
+                elif not upperFree: upperBound = upper
+
+                if lowerBound < upperBound:
+                    superstructure.append(structure)
+                    structure = substructure[:]
+                else:
+                    self.positionLabels.itemconfigure(lowerLabel, state = 'hidden')
+                    self.positionLabels.itemconfigure(upperLabel, state = 'hidden')
+            if superstructure: structure = superstructure.pop()
 
     def plot(self, timeLabels, positions):
         self.timeLabels.line = {}
@@ -206,7 +238,7 @@ class Visualisation(object):
                 lowerLabel, upperLabel = labels
                 
                 label = createLabel(lowerLabel, offset, False, indentation)
-                superlabels.append(label)
+                superlabels.append([label, bool(lowerLabel)])
                 structures.append([])
                 
                 parents.append((upperLabel, positions))
@@ -233,10 +265,13 @@ class Visualisation(object):
                 label = createLabel(upperLabel, offset, True, indentation)
 
                 substructure = structures.pop()
+                otherLabel, hasText = superlabels.pop()
                 if substructure:
-                    substructure[ 0][ 0][1] = False
-                    substructure[-1][+1][1] = False
-                structures[-1].append([[superlabels.pop(), True], [label, True], substructure])
+                    substructure[ 0][ 0][1] = True
+                    substructure[-1][+1][1] = True
+                structures[-1].append([ [otherLabel, False, hasText]
+                                      , [label, False, bool(upperLabel)]
+                                      , substructure ])
                 changeOffset = True
 
         self.positionLabels.structure = structures[0]
