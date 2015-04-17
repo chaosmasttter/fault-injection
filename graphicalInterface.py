@@ -126,9 +126,10 @@ class Visualisation(object):
             line = 0
             while line in offset and lowerX < offset[line] + textSize: line += 1
 
-            self.timeLabels.move(label, 0, line * textSize - lowerY)
+            distance = line * textSize - lowerY
+            self.timeLabels.move(label, 0, distance)
             offset[line] = upperX
-            lineStart.append((lowerX, upperY))
+            lineStart.append((lowerX, upperY + distance ))
 
             maxX = max(upperX, maxX)
             maxY = max(upperY, maxY)
@@ -190,8 +191,10 @@ class Visualisation(object):
         changeOffset = False
 
         parents = []
+        superlabels = []
         positions.reverse()
 
+        structures = [[]]
         while positions or parents:
             while isinstance(positions, list):
                 if not positions: break
@@ -203,13 +206,12 @@ class Visualisation(object):
                 lowerLabel, upperLabel = labels
                 
                 label = createLabel(lowerLabel, offset, False, indentation)
-                tags.append('tag{:x}'.format(label))
-                self.positionLabels.itemconfigure(label, tags = tuple(tags))
+                superlabels.append(label)
+                structures.append([])
                 
-                indentation += 10
-
                 parents.append((upperLabel, positions))
                 positions = subpositions
+                indentation += 10
 
             if isinstance(positions, tuple):
                 lower, upper = positions
@@ -224,13 +226,20 @@ class Visualisation(object):
                                width = 0, fill = self.coloring[value])
                     except KeyError: pass
                 offset += upper - lower
-            indentation -= 10
 
-            upperLabel, positions = parents.pop()
-            label = createLabel(upperLabel, offset, True, indentation)
-            self.positionLabels.itemconfigure(label, tags = tuple(tags))
-            tags.pop()
-            changeOffset = True
+            if parents:
+                indentation -= 10
+                upperLabel, positions = parents.pop()
+                label = createLabel(upperLabel, offset, True, indentation)
+
+                substructure = structures.pop()
+                if substructure:
+                    substructure[ 0][ 0][1] = False
+                    substructure[-1][+1][1] = False
+                structures[-1].append([[superlabels.pop(), True], [label, True], substructure])
+                changeOffset = True
+
+        self.positionLabels.structure = structures[0]
 
         for time, text in sorted(timeLabels):
             createLabel(text, time)
