@@ -4,7 +4,8 @@ import types
 
 class Visualisation(object):
     def __init__(self, parent, data, coloring,
-                 explanation, timeLabels, positionGroups):
+                 explanation, timeLabels, positionGroups,
+                 mirror = True):
         self.data = data
         self.coloring = coloring
         self.explanation = explanation
@@ -29,7 +30,7 @@ class Visualisation(object):
             canvas.defaultTextSize = canvas.bbox(defaultText)[3]
             canvas.delete(defaultText)
 
-        self.plot(timeLabels, positionGroups)
+        self.plot(timeLabels, positionGroups, mirror)
 
         self.scrollHorizontal = themed.Scrollbar(self.mainframe, orient = HORIZONTAL)
         self.scrollVertical   = themed.Scrollbar(self.mainframe, orient = VERTICAL)
@@ -179,7 +180,7 @@ class Visualisation(object):
                     self.positionLabels.itemconfigure(upperLabel, state = 'hidden')
             if superstructure: structure = superstructure.pop()
 
-    def plot(self, timeLabels, positions):
+    def plot(self, timeLabels, positions, mirror = True):
         self.timeLabels.line = {}
         self.positionLabels.line = {}
 
@@ -224,7 +225,13 @@ class Visualisation(object):
 
         parents = []
         superlabels = []
-        positions.reverse()
+        if not mirror:
+            stack = [(None, positions)]
+            while stack:
+                _, subpositions = stack.pop()
+                if not isinstance(subpositions, list): continue
+                stack.extend(subpositions[:])
+                subpositions.reverse()
 
         structures = [[]]
         while positions or parents:
@@ -249,13 +256,23 @@ class Visualisation(object):
                 lower, upper = positions
                 if lower > upper: lower, upper = upper, lower
 
-                for position in range(lower, upper):
+                if mirror:
+                    positionRange = range(upper - 1, lower - 1, - 1)
+                else:
+                    positionRange = range(lower, upper)
+
+                for position in positionRange:
                     try:
                         for time, value in self.data[position].items():
-                           location = offset + position - lower
-                           point = self.content.create_rectangle(
-                               time[0], location, time[1], location + 1,
-                               width = 0, fill = self.coloring[value])
+                            if mirror:
+                                location = offset + upper - position - 1
+                            else:
+                                location = offset + position - lower
+
+                            point = self.content.create_rectangle(
+                                time[0], location,
+                                time[1], location + 1,
+                                width = 0, fill = self.coloring[value])
                     except KeyError: pass
                 offset += upper - lower
 
