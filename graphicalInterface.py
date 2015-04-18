@@ -61,7 +61,6 @@ class Visualisation(object):
         self.content.bind('<Control-Button-5>', lambda event: self.zoom(0.9, event))
 
         self.legend.bind('<Configure>', self.plotLegend)
-
         self.content.bind('<Configure>', self.manageLabels)
 
         # place everything on the screen
@@ -74,7 +73,6 @@ class Visualisation(object):
                                   , pady = 5 )
         self.mainframe.columnconfigure( 1, weight = 1 )
         self.mainframe.rowconfigure(    1, weight = 1 )
-
 
     def scrollAllHorizontal(self, *arguments):
         for canvas in [self.content, self.timeLabels]:
@@ -130,7 +128,7 @@ class Visualisation(object):
             distance = line * textSize - lowerY
             self.timeLabels.move(label, 0, distance)
             offset[line] = upperX
-            lineStart.append((lowerX, upperY + distance ))
+            lineStart.append((label, lowerX + 1, upperY + distance ))
 
             maxX = max(upperX, maxX)
             maxY = max(upperY, maxY)
@@ -141,8 +139,9 @@ class Visualisation(object):
 
         if maxY is not None:
             height = maxY + textSize
-            for x, y in lineStart:
-                self.timeLabels.create_line(x, y, x, height, tags = 'line', fill = 'grey')
+            for label, x, y in lineStart:
+                line = self.timeLabels.create_line(x, y, x, height, tags = 'line', fill = 'grey')
+                self.timeLabels.lines[label] = self.timeLabels.lines[label][0], (line, True)
             self.timeLabels.tag_lower('line')
 
     def managePositionLabels(self, event = None):
@@ -181,21 +180,29 @@ class Visualisation(object):
             if superstructure: structure = superstructure.pop()
 
     def plot(self, timeLabels, positions, mirror = True):
-        self.timeLabels.line = {}
-        self.positionLabels.line = {}
+        self.timeLabels.lines = {}
+        self.positionLabels.lines = {}
 
         verticalLines = {}
         horizontalLines = {}
 
-        def showLine(label, canvas):
-            line = canvas.line[label]
-            self.content.tag_raise(line)
-            self.content.itemconfigure(line, fill = 'black')
+        def showLines(label, canvas):
+            for line, onCanvas in canvas.lines[label]:
+                if onCanvas:
+                    lineCanvas = canvas
+                else:
+                    lineCanvas = self.content
+                lineCanvas.tag_raise(line)
+                lineCanvas.itemconfigure(line, fill = 'black')
 
-        def hideLine(label, canvas):
-            line = canvas.line[label]
-            self.content.tag_lower(line)
-            self.content.itemconfigure(line, fill = 'grey')
+        def hideLines(label, canvas):
+            for line, onCanvas in canvas.lines[label]:
+                if onCanvas:
+                    lineCanvas = canvas
+                else:
+                    lineCanvas = self.content
+                lineCanvas.tag_lower(line)
+                lineCanvas.itemconfigure(line, fill = 'grey')
 
         def createLabel(text, distance, aboveLine = None, indentation = 0):
             anchor = 'nw'
@@ -209,12 +216,14 @@ class Visualisation(object):
 
             label = canvas.create_text(*position, text = text, anchor = anchor)
             canvas.tag_bind(label, '<Enter>',
-                            lambda _, label = label: showLine(label, canvas))
+                            lambda _, label = label: showLines(label, canvas))
             canvas.tag_bind(label, '<Leave>',
-                            lambda _, label = label: hideLine(label, canvas))
+                            lambda _, label = label: hideLines(label, canvas))
 
-            if canvas is self.timeLabels: verticalLines[label] = distance
-            else: horizontalLines[label] = distance
+            if canvas is self.timeLabels:
+                verticalLines[label] = distance
+            else:
+                horizontalLines[label] = distance
 
             return label
 
@@ -243,6 +252,7 @@ class Visualisation(object):
 
                 labels, subpositions = positions.pop()
                 lowerLabel, upperLabel = labels
+                if mirror: lowerLabel, upperLabel = upperLabel, lowerLabel
                 
                 label = createLabel(lowerLabel, offset, False, indentation)
                 superlabels.append([label, bool(lowerLabel)])
@@ -300,13 +310,13 @@ class Visualisation(object):
         lowerX, upperX, lowerY, upperY, _, _, _, _ = drawingRegions
 
         for label, time in verticalLines.items():
-            self.timeLabels.line[label] = self.content.create_line(
-                time, lowerY, time, upperY)
-            hideLine(label, self.timeLabels)
+            self.timeLabels.lines[label] \
+                = (self.content.create_line(time, lowerY, time, upperY), False),
+            hideLines(label, self.timeLabels)
         for label, position in horizontalLines.items():
-            self.positionLabels.line[label] = self.content.create_line(
-                lowerX, position, upperX, position)
-            hideLine(label, self.positionLabels)
+            self.positionLabels.lines[label] \
+                = (self.content.create_line(lowerX, position, upperX, position), False),
+            hideLines(label, self.positionLabels)
 
         self.setScrollRegions(drawingRegions)
 

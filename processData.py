@@ -269,7 +269,7 @@ def parseResults(filename, dataClass):
               and result.startTime is not None and result.endTime is not None:
                 if bitPosition not in data:
                     data[bitPosition] = {}
-                data[bitPosition][result.startTime, result.endTime + 1] = result.classify()
+                data[bitPosition][result.startTime - 1, result.endTime] = result.classify()
 
     return data, trace.items()
 
@@ -367,7 +367,7 @@ def createMemoryLabels(data, usage, structures):
                 structures.append(structure)
 
             elif upper <= end:
-                labels.append((name, ''))
+                labels.append(('', name))
                 superlabels.append(labels)
                 labels = []
 
