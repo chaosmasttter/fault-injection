@@ -145,7 +145,7 @@ class Visualisation(object):
             self.timeLabels.tag_lower('line')
 
     def managePositionLabels(self, event = None):
-        self.positionLabels.itemconfigure('all', state = 'hidden')
+        self.positionLabels.itemconfigure('label', state = 'hidden')
 
         structure = self.positionLabels.structure[:]
         superstructure = []
@@ -214,7 +214,7 @@ class Visualisation(object):
                 position = indentation, distance
                 if aboveLine: anchor = 'sw'
 
-            label = canvas.create_text(*position, text = text, anchor = anchor)
+            label = canvas.create_text(*position, text = text, tag = 'label', anchor = anchor)
             canvas.tag_bind(label, '<Enter>',
                             lambda _, label = label: showLines(label, canvas))
             canvas.tag_bind(label, '<Leave>',
@@ -223,7 +223,7 @@ class Visualisation(object):
             if canvas is self.timeLabels:
                 verticalLines[label] = distance
             else:
-                horizontalLines[label] = distance
+                horizontalLines[label] = distance, indentation
 
             return label
 
@@ -247,7 +247,7 @@ class Visualisation(object):
             while isinstance(positions, list):
                 if not positions: break
 
-                if changeOffset: offset += 10
+                if changeOffset: offset += 20
                 changeOffset = False
 
                 labels, subpositions = positions.pop()
@@ -260,7 +260,7 @@ class Visualisation(object):
                 
                 parents.append((upperLabel, positions))
                 positions = subpositions
-                indentation += 10
+                indentation += 20
 
             if isinstance(positions, tuple):
                 lower, upper = positions
@@ -287,7 +287,7 @@ class Visualisation(object):
                 offset += upper - lower
 
             if parents:
-                indentation -= 10
+                indentation -= 20
                 upperLabel, positions = parents.pop()
                 label = createLabel(upperLabel, offset, True, indentation)
 
@@ -307,15 +307,16 @@ class Visualisation(object):
             createLabel(text, time)
 
         drawingRegions = self.drawingRegions()
-        lowerX, upperX, lowerY, upperY, _, _, _, _ = drawingRegions
+        lowerX, upperX, lowerY, upperY, _, _, _, positionsUpperX = drawingRegions
 
         for label, time in verticalLines.items():
             self.timeLabels.lines[label] \
                 = (self.content.create_line(time, lowerY, time, upperY), False),
             hideLines(label, self.timeLabels)
-        for label, position in horizontalLines.items():
+        for label, (position, indentation) in horizontalLines.items():
             self.positionLabels.lines[label] \
-                = (self.content.create_line(lowerX, position, upperX, position), False),
+                = (self.content.create_line(lowerX, position, upperX, position), False) \
+                , (self.positionLabels.create_line(indentation, position, positionsUpperX, position), True)
             hideLines(label, self.positionLabels)
 
         self.setScrollRegions(drawingRegions)
