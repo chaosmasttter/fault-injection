@@ -216,9 +216,9 @@ class Visualisation(object):
 
             label = canvas.create_text(*position, text = text, tag = 'label', anchor = anchor)
             canvas.tag_bind(label, '<Enter>',
-                            lambda _, label = label: showLines(label, canvas))
+                            lambda _, label = label: canvas.after_idle(showLines, label, canvas))
             canvas.tag_bind(label, '<Leave>',
-                            lambda _, label = label: hideLines(label, canvas))
+                            lambda _, label = label: canvas.after_idle(hideLines, label, canvas))
 
             if canvas is self.timeLabels:
                 verticalLines[label] = distance
