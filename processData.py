@@ -279,7 +279,7 @@ def createRegisterLabels():
     for register in range(Register.count):
         lower = register * Register.bits
         upper = lower + Register.bits
-        labels.append(((Register.show(register), ''), (lower, upper)))
+        labels.append((('', Register.show(register)), (lower, upper)))
 
     return labels
 

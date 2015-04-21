@@ -1,6 +1,5 @@
 from Tkinter import Tk, Canvas, Scrollbar, HORIZONTAL, VERTICAL
 import ttk as themed
-import types
 
 class Visualisation(object):
     def __init__(self, parent, data, coloring,
@@ -83,7 +82,7 @@ class Visualisation(object):
             canvas.yview(*arguments)
 
     def force(self, function = None, *arguments):
-        if isinstance(function, types.FunctionType): function(*arguments)
+        if callable(function): function(*arguments)
         self.mainframe.update_idletasks()
 
     def zoom(self, scale, event):
@@ -101,8 +100,17 @@ class Visualisation(object):
         self.setScrollRegions(self.drawingRegions())
 
         if event is not None:
-            if int(self.timeLabels['height']) > event.height: self.timeLabels['height'] = 0
-            if int(self.positionLabels['width']) > event.width: self.positionLabels['width'] = 0
+            if int(self.timeLabels['height']) > event.height:
+                self.timeLabels['height'] = 0
+                self.content.bind('<Configure>',
+                                  lambda _: self.content.bind('<Configure>',
+                                                              self.manageLabels))
+
+            if int(self.positionLabels['width']) > event.width:
+                self.positionLabels['width'] = 0
+                self.content.bind('<Configure>',
+                                  lambda _: self.content.bind('<Configure>',
+                                                              self.manageLabels))
 
     def manageTimeLabels(self, event = None):
         self.timeLabels.delete('line')
@@ -399,4 +407,3 @@ class Visualisation(object):
         return (lowerX, upperX, lowerY, upperY,
                 timeLabelsLowerY, timeLabelsUpperY,
                 positionLabelsLowerX, positionLabelsUpperX)
-
