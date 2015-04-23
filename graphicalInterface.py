@@ -9,6 +9,10 @@ class Visualisation(object):
         self.coloring = coloring
         self.explanation = explanation
 
+        self.currentZoom = 1
+        self.minimalZoom = 1
+        self.maximalZoom = 10
+
         # the frame containing all widgets needed for the visualisation
         self.mainframe = themed.Frame(parent, padding = 5)
 
@@ -25,9 +29,11 @@ class Visualisation(object):
             canvas['background'] = color
             canvas['highlightthickness'] = 0
 
-            defaultText = canvas.create_text(0, 0, anchor = 'n')
-            canvas.defaultTextSize = canvas.bbox(defaultText)[3]
-            canvas.delete(defaultText)
+        self.content.noManaging = False
+
+        defaultText = self.timeLabels.create_text(0, 0, anchor = 'n')
+        self.timeLabels.defaultTextSize = self.timeLabels.bbox(defaultText)[3]
+        self.timeLabels.delete(defaultText)
 
         self.plot(timeLabels, positionGroups, mirror)
 
@@ -60,7 +66,7 @@ class Visualisation(object):
         self.content.bind('<Control-Button-5>', lambda event: self.zoom(0.9, event))
 
         self.legend.bind('<Configure>', self.plotLegend)
-        self.content.bind('<Configure>', self.manageLabels)
+        self.content.bind('<Configure>', self.manageContent)
 
         # place everything on the screen
         self.timeLabels      .grid( column = 1, row = 0, sticky = 'nsew' )
@@ -88,13 +94,29 @@ class Visualisation(object):
     def zoom(self, scale, event):
         x, y = self.content.canvasx(event.x), self.content.canvasy(event.y)
 
+        if scale < 1: self.content.bind('<Control-Button-4>', lambda event: self.zoom(1.1, event))
+        if scale > 1: self.content.bind('<Control-Button-5>', lambda event: self.zoom(0.9, event))
+
+        if scale * self.currentZoom > self.maximalZoom:
+            scale = self.maximalZoom / self.currentZoom
+            self.content.unbind('<Control-Button-4>')
+        if scale * self.currentZoom < self.minimalZoom:
+            scale = self.minimalZoom / self.currentZoom
+            self.content.unbind('<Control-Button-5>')
+
+        self.currentZoom *= scale
+
         self.content       .scale('all', x, y, scale, scale)
         self.timeLabels    .scale('all', x, y, scale, 1,   )
         self.positionLabels.scale('all', x, y, 1,     scale)
 
-        self.manageLabels()
+        self.manageContent()
 
-    def manageLabels(self, event = None):
+    def manageContent(self, event = None):
+        if self.content.noManaging:
+            self.content.noManaging = False
+            return
+
         self.manageTimeLabels()
         self.managePositionLabels()
         self.setScrollRegions(self.drawingRegions())
@@ -102,15 +124,13 @@ class Visualisation(object):
         if event is not None:
             if int(self.timeLabels['height']) > event.height:
                 self.timeLabels['height'] = 0
-                self.content.bind('<Configure>',
-                                  lambda _: self.content.bind('<Configure>',
-                                                              self.manageLabels))
-
+                self.content.noManaging = True
             if int(self.positionLabels['width']) > event.width:
                 self.positionLabels['width'] = 0
-                self.content.bind('<Configure>',
-                                  lambda _: self.content.bind('<Configure>',
-                                                              self.manageLabels))
+                self.content.noManaging = True
+
+            self.minimalZoom = min(float(event.width)  / self.content.width,
+                                   float(event.height) / self.content.height)
 
     def manageTimeLabels(self, event = None):
         self.timeLabels.delete('line')
@@ -315,7 +335,7 @@ class Visualisation(object):
             createLabel(text, time)
 
         drawingRegions = self.drawingRegions()
-        lowerX, upperX, lowerY, upperY, _, _, _, positionsUpperX = drawingRegions
+        lowerX, upperX, lowerY, upperY, _, _, positionsLowerX, positionsUpperX = drawingRegions
 
         for label, time in verticalLines.items():
             self.timeLabels.lines[label] \
@@ -324,10 +344,12 @@ class Visualisation(object):
         for label, (position, indentation) in horizontalLines.items():
             self.positionLabels.lines[label] \
                 = (self.content.create_line(lowerX, position, upperX, position), False) \
-                , (self.positionLabels.create_line(indentation, position, positionsUpperX, position), True)
+                , (self.positionLabels.create_line(positionsLowerX + indentation, position, positionsUpperX, position), True)
             hideLines(label, self.positionLabels)
 
         self.setScrollRegions(drawingRegions)
+        self.content.width  = upperX - lowerX
+        self.content.height = upperY - lowerY
 
     def plotLegend(self, event):
         self.legend.delete('all')
