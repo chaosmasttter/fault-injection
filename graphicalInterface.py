@@ -23,10 +23,10 @@ class Visualisation(object):
 
         # set the background color of the canvases
         # to match that of the themed widgets
-        color = themed.Style().lookup("TFrame", "background")
+        self.backgroundColor = themed.Style().lookup("TFrame", "background")
         for canvas in \
           self.content, self.timeLabels, self.positionLabels, self.legend:
-            canvas['background'] = color
+            canvas['background'] = self.backgroundColor
             canvas['highlightthickness'] = 0
 
         self.content.noManaging = False
@@ -310,7 +310,8 @@ class Visualisation(object):
                             point = self.content.create_rectangle(
                                 time[0], location,
                                 time[1], location + 1,
-                                width = 0, fill = self.coloring[value])
+                                width = 0, fill = self.coloring[value],
+                                tag = 'value{:x}'.format(value))
                     except KeyError: pass
                 offset += upper - lower
 
@@ -362,6 +363,18 @@ class Visualisation(object):
                 x, y, x + 10, y + 10, fill = self.coloring[value])
             label = self.legend.create_text(
                 x + 15, y, text = explanationText, anchor = 'nw')
+
+            def showContent(value, rectangle):
+                self.content.itemconfigure('value{:x}'.format(value), state = 'normal')
+                self.legend.itemconfigure(rectangle, fill = self.coloring[value])
+                self.legend.tag_bind(rectangle, '<Button-1>', lambda _: hideContent(value, rectangle))
+
+            def hideContent(value, rectangle):
+                self.content.itemconfigure('value{:x}'.format(value), state = 'hidden')
+                self.legend.itemconfigure(rectangle, fill = self.backgroundColor)
+                self.legend.tag_bind(rectangle, '<Button-1>', lambda _: showContent(value, rectangle))
+
+            self.legend.tag_bind(rectangle, '<Button-1>', lambda _, value = value, rectangle = rectangle: hideContent(value, rectangle))
 
             _, _, xend, yend = self.legend.bbox(label)
             yend = max(y + 15, yend)
