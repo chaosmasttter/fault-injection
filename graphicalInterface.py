@@ -50,34 +50,42 @@ class Visualisation(object):
         self.scrollHorizontal['command'] = self.scrollAllHorizontal
         self.scrollVertical  ['command'] = self.scrollAllVertical
 
-        self.mainframe.bind_all('<Button-4>', lambda _: self.force
-                                (self.scrollAllVertical,   'scroll', - 1, 'units'))
-        self.mainframe.bind_all('<Button-5>', lambda _: self.force
-                                (self.scrollAllVertical,   'scroll', + 1, 'units'))
-        self.mainframe.bind_all('<Shift-Button-4>', lambda _: self.force
-                                (self.scrollAllHorizontal, 'scroll', - 1, 'units'))
-        self.mainframe.bind_all('<Shift-Button-5>', lambda _: self.force
-                                (self.scrollAllHorizontal, 'scroll', + 1, 'units'))
+        def bindScrollCommand(scrollEvent, scrollFunction, direction):
+            self.mainframe.bind_all(scrollEvent, lambda _: self.force
+                                    (scrollFunction, 'scroll', direction, 'units'))
 
-        self.mainframe.bind_all('<Control-Button-4>', self.force)
-        self.mainframe.bind_all('<Control-Button-5>', self.force)
+        self.mainframe.event_add('<<ScrollUp>>',    '<Up>',    '<Button-4>')
+        self.mainframe.event_add('<<ScrollDown>>',  '<Down>',  '<Button-5>')
+        self.mainframe.event_add('<<ScrollLeft>>',  '<Left>',  '<Shift-Button-4>')
+        self.mainframe.event_add('<<ScrollRight>>', '<Right>', '<Shift-Button-5>')
 
-        self.content.bind('<Control-Button-4>', lambda event: self.zoom(1.1, event))
-        self.content.bind('<Control-Button-5>', lambda event: self.zoom(0.9, event))
+        bindScrollCommand('<<ScrollUp>>',    self.scrollAllVertical,   - 1)
+        bindScrollCommand('<<ScrollDown>>',  self.scrollAllVertical,   + 1)
+        bindScrollCommand('<<ScrollLeft>>',  self.scrollAllHorizontal, - 1)
+        bindScrollCommand('<<ScrollRight>>', self.scrollAllHorizontal, + 1)
 
-        self.legend.bind('<Configure>', self.plotLegend)
+        self.content.event_add('<<ZoomIn>>',  '+', '<Control-Button-4>')
+        self.content.event_add('<<ZoomOut>>', '-', '<Control-Button-5>')
+        
+        self.content.bind('<<ZoomIn>>',  lambda event: self.zoom(1.1, event)) 
+        self.content.bind('<<ZoomOut>>', lambda event: self.zoom(0.9, event))
+
+        self.legend .bind('<Configure>', self.plotLegend)
         self.content.bind('<Configure>', self.manageContent)
 
+        self.content.bind('<Enter>', lambda _: self.content  .focus_set())
+        self.content.bind('<Leave>', lambda _: self.mainframe.focus_set())
+
         # place everything on the screen
-        self.timeLabels      .grid( column = 1, row = 0, sticky = 'nsew' )
-        self.positionLabels  .grid( column = 0, row = 1, sticky = 'nsew' )
-        self.content         .grid( column = 1, row = 1, sticky = 'nsew' )
-        self.scrollHorizontal.grid( column = 1, row = 2, sticky = 'nsew' )
-        self.scrollVertical  .grid( column = 2, row = 1, sticky = 'nsew' )
-        self.legend          .grid( column = 1, row = 3, sticky = 'nsew'
-                                  , pady = 5 )
-        self.mainframe.columnconfigure( 1, weight = 1 )
-        self.mainframe.rowconfigure(    1, weight = 1 )
+        self.timeLabels      .grid(column = 1, row = 0, sticky = 'nsew')
+        self.positionLabels  .grid(column = 0, row = 1, sticky = 'nsew')
+        self.content         .grid(column = 1, row = 1, sticky = 'nsew')
+        self.scrollHorizontal.grid(column = 1, row = 2, sticky = 'nsew')
+        self.scrollVertical  .grid(column = 2, row = 1, sticky = 'nsew')
+        self.legend          .grid(column = 1, row = 3, sticky = 'nsew', pady = 5)
+
+        self.mainframe.columnconfigure(1, weight = 1)
+        self.mainframe.rowconfigure(   1, weight = 1)
 
     def scrollAllHorizontal(self, *arguments):
         for canvas in [self.content, self.timeLabels]:
@@ -94,15 +102,15 @@ class Visualisation(object):
     def zoom(self, scale, event):
         x, y = self.content.canvasx(event.x), self.content.canvasy(event.y)
 
-        if scale < 1: self.content.bind('<Control-Button-4>', lambda event: self.zoom(1.1, event))
-        if scale > 1: self.content.bind('<Control-Button-5>', lambda event: self.zoom(0.9, event))
+        if scale < 1: self.content.bind('<<ZoomIn>>',  lambda event: self.zoom(1.1, event))
+        if scale > 1: self.content.bind('<<ZoomOut>>', lambda event: self.zoom(0.9, event))
 
         if scale * self.currentZoom > self.maximalZoom:
             scale = self.maximalZoom / self.currentZoom
-            self.content.unbind('<Control-Button-4>')
+            self.content.unbind('<<ZoomIn>>')
         if scale * self.currentZoom < self.minimalZoom:
             scale = self.minimalZoom / self.currentZoom
-            self.content.unbind('<Control-Button-5>')
+            self.content.unbind('<<ZoomOut>>')
 
         self.currentZoom *= scale
 
@@ -355,6 +363,16 @@ class Visualisation(object):
     def plotLegend(self, event):
         self.legend.delete('all')
 
+        def showContent(value, rectangle):
+            self.content.itemconfigure('value{:x}'.format(value), state = 'normal')
+            self.legend.itemconfigure(rectangle, fill = self.coloring[value])
+            self.legend.tag_bind(rectangle, '<Button-1>', lambda _: hideContent(value, rectangle))
+
+        def hideContent(value, rectangle):
+            self.content.itemconfigure('value{:x}'.format(value), state = 'hidden')
+            self.legend.itemconfigure(rectangle, fill = self.backgroundColor)
+            self.legend.tag_bind(rectangle, '<Button-1>', lambda _: showContent(value, rectangle))
+
         x, y = 0, 0
         yend = 0
 
@@ -363,16 +381,6 @@ class Visualisation(object):
                 x, y, x + 10, y + 10, fill = self.coloring[value])
             label = self.legend.create_text(
                 x + 15, y, text = explanationText, anchor = 'nw')
-
-            def showContent(value, rectangle):
-                self.content.itemconfigure('value{:x}'.format(value), state = 'normal')
-                self.legend.itemconfigure(rectangle, fill = self.coloring[value])
-                self.legend.tag_bind(rectangle, '<Button-1>', lambda _: hideContent(value, rectangle))
-
-            def hideContent(value, rectangle):
-                self.content.itemconfigure('value{:x}'.format(value), state = 'hidden')
-                self.legend.itemconfigure(rectangle, fill = self.backgroundColor)
-                self.legend.tag_bind(rectangle, '<Button-1>', lambda _: showContent(value, rectangle))
 
             self.legend.tag_bind(rectangle, '<Button-1>', lambda _, value = value, rectangle = rectangle: hideContent(value, rectangle))
 
