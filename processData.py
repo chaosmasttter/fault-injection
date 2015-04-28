@@ -3,7 +3,7 @@
 import re
 import csv
 import sys
-from itertools import takewhile
+from bisect import bisect
 from decimal import Decimal
 from struct import unpack
 from subprocess import check_output
@@ -238,8 +238,7 @@ def createTimeLabels(trace, symbolTable):
     for time, instructionPointer in sorted(trace):
         try:
             # the biggest address smaller or equal to the instruction pointer
-            address = list(takewhile(lambda address: address < instructionPointer,
-                                     symbolAddresses))[-1]
+            address = symbolAddresses[bisect(symbolAddresses, instructionPointer) - 1]
             # lookup the corresponding symbol and extract the function name
             symbol = symbolTable[address].split('(')[0]
 
