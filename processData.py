@@ -266,8 +266,7 @@ def parseResults(filename, dataClass):
 
             if bitPosition is not None \
               and result.startTime is not None and result.endTime is not None:
-                if bitPosition not in data:
-                    data[bitPosition] = {}
+                if bitPosition not in data: data[bitPosition] = {}
                 data[bitPosition][result.startTime - 1, result.endTime] = result.classify()
 
     return data, trace.items()
@@ -282,43 +281,44 @@ def createRegisterLabels():
 
     return labels
 
-def createMemoryLabels(data, usage, structures):
+def parseMemoryUsageData(fileName):
     memoryUsage = []
-    if usage is not None:
-        with open(usage, 'rU') as usageFile:
+    try:
+        with open(fileName, 'rU') as usageFile:
             for line in csv.reader(usageFile, delimiter = ' '):
                 try:
                     address = Memory.read(line[0], 16)
                     size = int(line[1])
                     name = line[2]
-                except (IndexError, ValueError):
-                    print 'unable to read'
-                    continue
+                except (IndexError, ValueError): continue
                 position = address * Memory.bits, (address + size) * Memory.bits
                 memoryUsage.append((position, name))
+    except IOError: pass
+    return memoryUsage
 
-    def parse(line):
-        depth = 0
-        nextResult = []
-        for char in line:
-            if depth == 0 and char == ',':
-                yield ''.join(nextResult).strip()
-                nextResult = []
-                continue
+def parseDataStructure(line):
+    depth = 0
+    nextResult = []
+    for char in line:
+        if depth == 0 and char == ',':
+            yield ''.join(nextResult).strip()
+            nextResult = []
+            continue
 
-            if char == '<':
-                depth += 1
-            if char == '>':
-                depth -= 1
+        if char == '<':
+            depth += 1
+        if char == '>':
+            depth -= 1
 
-            nextResult.append(char)
-        yield ''.join(nextResult).strip()
+        nextResult.append(char)
+    yield ''.join(nextResult).strip()
 
+def parseDataStructures(fileName):
     dataStructures = {}
-    if structures is not None:
-        with open(structures, "rU") as structureFile:
+    try:
+        with open(fileName, "rU") as structureFile:
             for line in structureFile:
-                fieldIterator = parse(line)
+                fieldIterator = parseDataStructure(line)
                 try:
                     structureName = next(fieldIterator)
                     next(fieldIterator)
@@ -328,7 +328,10 @@ def createMemoryLabels(data, usage, structures):
                     structure.append((int(offset), name))
                 if structure != []:
                     dataStructures[structureName] = structure
+    except IOError: pass
+    return dataStructures
 
+def createMemoryLabels(data, memoryUsage = [], dataStructures = {}):
     maximalDistance = 8 * 8
     clusters = []
 
@@ -452,8 +455,14 @@ def main():
         data, trace = parseResults(arguments.data, Memory)
         printStatus("Done")
 
+        printStatus("Parse memory usage data ...")
+        memoryUsage = parseMemoryUsageData(arguments.memory_usage)
+        printStatus("Done")
+        printStatus("Parse data structures ...")
+        dataStructures = parseDataStructures(arguments.data_structures)
+        printStatus("Done")
         printStatus("Create memory labels ...")
-        positionLabels = createMemoryLabels(data, arguments.memory_usage, arguments.data_structures)
+        positionLabels = createMemoryLabels(data, memoryUsage, dataStructures)
         printStatus("Done")
 
     if binary is not None:
