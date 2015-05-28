@@ -363,8 +363,7 @@ def createMemoryLabels(data, memoryUsage = [], dataStructures = {}):
                     clusters.append((start, upper))
                     cluster = lower, start
 
-                if superstructures: label = '', ''
-                else: label = Memory.show(lower >> 3), Memory.show(upper >> 3)
+                label = Memory.show(lower >> 3), Memory.show(upper >> 3)
                 labels.append((label, cluster))
                 structures.append(structure)
 
