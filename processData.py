@@ -361,7 +361,8 @@ def createMemoryLabels(data, memoryUsage = [], dataStructures = {}):
             if lower < start:
                 if upper > start:
                     clusters.append((start, upper))
-                    cluster = lower, start
+                    upper = start
+                    cluster = lower, upper
 
                 label = Memory.show(lower >> 3), Memory.show(upper >> 3)
                 labels.append((label, cluster))
@@ -396,13 +397,11 @@ def createMemoryLabels(data, memoryUsage = [], dataStructures = {}):
                 if end < cluster[1]:
                     clusters.append(cluster)
                     break
-                if superstructures: label = '', ''
-                else: label = Memory.show(lower >> 3), Memory.show(upper >> 3)
+                label = Memory.show(cluster[0] >> 3), Memory.show(cluster[1] >> 3)
                 labels.append((label, cluster))
 
             if superstructures:
                 structures = superstructures.pop()
-
                 sublabels = labels
                 labels = superlabels.pop()
                 label = labels.pop()

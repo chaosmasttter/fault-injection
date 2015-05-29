@@ -9,9 +9,9 @@ class Visualisation(object):
         self.coloring = coloring
         self.explanation = explanation
 
-        self.currentZoom = 1
-        self.minimalZoom = 1
-        self.maximalZoom = 10
+        self.currentZoom = 1.0
+        self.minimalZoom = 1.0
+        self.maximalZoom = 10.0
 
         # the frame containing all widgets needed for the visualisation
         self.mainframe = themed.Frame(parent, padding = 5)
@@ -20,6 +20,8 @@ class Visualisation(object):
         self.timeLabels     = Canvas(self.mainframe)
         self.positionLabels = Canvas(self.mainframe)
         self.legend         = Canvas(self.mainframe)
+
+        self.locationLabel = themed.Label(self.mainframe)
 
         # set the background color of the canvases
         # to match that of the themed widgets
@@ -82,7 +84,8 @@ class Visualisation(object):
         self.content         .grid(column = 1, row = 1, sticky = 'nsew')
         self.scrollHorizontal.grid(column = 1, row = 2, sticky = 'nsew')
         self.scrollVertical  .grid(column = 2, row = 1, sticky = 'nsew')
-        self.legend          .grid(column = 1, row = 3, sticky = 'nsew', pady = 5)
+        self.locationLabel   .grid(column = 1, row = 3, sticky = 'nsew')
+        self.legend          .grid(column = 1, row = 4, sticky = 'nsew')
 
         self.mainframe.columnconfigure(1, weight = 1)
         self.mainframe.rowconfigure(   1, weight = 1)
@@ -149,14 +152,10 @@ class Visualisation(object):
         offset = {}
         lineStart = []
 
-        maxX = None
-        maxY = None
+        maxX, maxY = None, None
 
-        freeSpace = False
         for label in self.timeLabels.find_all():
             lowerX, lowerY, upperX, upperY = self.timeLabels.bbox(label)
-
-            if maxX is not None and lowerX > maxX: freeSpace = True
 
             line = 0
             while line in offset and lowerX < offset[line] + textSize: line += 1
@@ -168,10 +167,6 @@ class Visualisation(object):
 
             maxX = max(upperX, maxX)
             maxY = max(upperY, maxY)
-
-        if not freeSpace:
-            self.timeLabels.itemconfigure('all', state = 'hidden')
-            return
 
         if maxY is not None:
             height = maxY + textSize
@@ -215,13 +210,21 @@ class Visualisation(object):
                     self.positionLabels.itemconfigure(upperLabel, state = 'hidden')
             if superstructure: structure = superstructure.pop()
 
-    def plot(self, timeLabels, positions, mirror = True):
+    def plot(self, timeLabels, positions, locationInformation, mirror = True):
         self.timeLabels.lines = {}
         self.positionLabels.lines = {}
 
         verticalLines = {}
         horizontalLines = {}
 
+        unitPoint = self.content.create_rectangle(1, 1, 1, 1, width = 0, state = 'hidden')
+
+        def showLocation(correction, event):
+            x = self.content.canvasx(event.x) / self.content.coords(unitPoint)[0] - correction[0]
+            y = self.content.canvasx(event.y) / self.content.coords(unitPoint)[1] - correction[1]
+
+            self.locationLabel['text'] = locationInformation(x,y)
+    
         def showLines(label, canvas):
             for line, onCanvas in canvas.lines[label]:
                 if onCanvas:
@@ -315,11 +318,10 @@ class Visualisation(object):
                             else:
                                 location = offset + position - lower
 
-                            point = self.content.create_rectangle(
-                                time[0], location,
-                                time[1], location + 1,
-                                width = 0, fill = self.coloring[value],
-                                tag = 'value{:x}'.format(value))
+                            box = time[0], location, time[1], location + 1
+                            point = self.content.create_rectangle(box, width = 0, fill = self.coloring[value], tag = 'value{:x}'.format(value))
+#                            self.content.tag_bind(point, '<Motion>', lambda correction = (position - box[0], time[0] - box[1]), event:
+#                                                  showLocation(lowerX, lowerY, position, time, event))
                     except KeyError: pass
                 offset += upper - lower
 
