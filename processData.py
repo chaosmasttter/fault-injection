@@ -246,7 +246,7 @@ def createTimeLabels(trace, symbolTable):
             if symbol != lastSymbol:
                 labels.append((time, symbol))
                 lastSymbol = symbol
-        except IndexError: pass
+        except IndexError: pass # ignore instruction pointer with no corresponding symbol
 
     return labels
 
@@ -262,7 +262,7 @@ def parseResults(filename, dataClass):
             bitPosition = dataClass.bitPosition(result)
 
             if result.instructionPointer is not None and result.endTime is not None:
-                trace[result.endTime] = result.instructionPointer
+                trace[result.endTime - 1] = result.instructionPointer
 
             if bitPosition is not None \
               and result.startTime is not None and result.endTime is not None:
@@ -279,6 +279,7 @@ def createRegisterLabels():
         upper = lower + Register.bits
         labels.append((('', Register.show(register)), (lower, upper)))
 
+    labes.reverse()
     return labels
 
 def parseMemoryUsageData(fileName):
@@ -400,13 +401,13 @@ def createMemoryLabels(data, memoryUsage = [], dataStructures = {}):
                 label = Memory.show(cluster[0] >> 3), Memory.show(cluster[1] >> 3)
                 labels.append((label, cluster))
 
-            if superstructures:
-                structures = superstructures.pop()
-                sublabels = labels
-                labels = superlabels.pop()
-                label = labels.pop()
-                labels.append((label, sublabels))
-            else: break
+            if not superstructures: break
+
+            structures = superstructures.pop()
+            sublabels = labels
+            labels = superlabels.pop()
+            label = labels.pop()
+            labels.append((label, sublabels))
 
     return labels
 

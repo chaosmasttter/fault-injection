@@ -181,9 +181,12 @@ class Visualisation(object):
         structure = self.positionLabels.structure[:]
         superstructure = []
 
+        oldLowerBound = oldUpperBound = None
+        lowerBound = upperBound = None
         while structure or superstructure:
             while structure:
                 (lowerLabel, lowerFree, lowerText), (upperLabel, upperFree, upperText), substructure = structure.pop()
+
                 self.positionLabels.itemconfigure(lowerLabel, state = 'normal')
                 _, lower, _, upper = self.positionLabels.bbox(lowerLabel)
                 if lowerText:
@@ -203,12 +206,19 @@ class Visualisation(object):
                 elif not upperFree: upperBound = upper
 
                 if lowerBound < upperBound:
-                    superstructure.append(structure)
+                    superstructure.append((oldLowerBound, oldUpperBound, structure))
                     structure = substructure[:]
+                    oldLowerBound = lowerBound
+                    oldUpperBound = upperBound
+
                 else:
                     self.positionLabels.itemconfigure(lowerLabel, state = 'hidden')
                     self.positionLabels.itemconfigure(upperLabel, state = 'hidden')
-            if superstructure: structure = superstructure.pop()
+            if superstructure:
+                oldLowerBound, oldUpperBound, structure = superstructure.pop()
+                lowerBound = oldLowerBound
+                upperBound = oldUpperBound
+            
 
     def plot(self, timeLabels, positions, locationInformation, mirror = True):
         self.timeLabels.lines = {}
