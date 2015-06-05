@@ -5,6 +5,11 @@ class Visualisation(object):
     def __init__(self, parent, data, coloring,
                  explanation, timeLabels, positionGroups,
                  mirror = True):
+
+        style = themed.Style()
+        style.configure('.', background = 'white')
+
+
         self.data = data
         self.coloring = coloring
         self.explanation = explanation
@@ -25,7 +30,7 @@ class Visualisation(object):
 
         # set the background color of the canvases
         # to match that of the themed widgets
-        self.backgroundColor = themed.Style().lookup("TFrame", "background")
+        self.backgroundColor = style.lookup('.', 'background')
         for canvas in \
           self.content, self.timeLabels, self.positionLabels, self.legend:
             canvas['background'] = self.backgroundColor
@@ -171,7 +176,7 @@ class Visualisation(object):
         if maxY is not None:
             height = maxY + textSize
             for label, x, y in lineStart:
-                line = self.timeLabels.create_line(x, y, x, height, tags = 'line', fill = 'grey')
+                line = self.timeLabels.create_line(x, y, x, height, tags = 'line', fill = 'lightgrey')
                 self.timeLabels.lines[label] = self.timeLabels.lines[label][0], (line, True)
             self.timeLabels.tag_lower('line')
 
@@ -251,7 +256,7 @@ class Visualisation(object):
                 else:
                     lineCanvas = self.content
                 lineCanvas.tag_lower(line)
-                lineCanvas.itemconfigure(line, fill = 'grey')
+                lineCanvas.itemconfigure(line, fill = 'lightgrey')
 
         def createLabel(text, distance, aboveLine = None, indentation = 0):
             anchor = 'nw'
