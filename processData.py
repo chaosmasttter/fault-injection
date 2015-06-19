@@ -254,7 +254,7 @@ def parseResults(filename, dataClass):
     data = {}
     trace = {}
 
-    with open(filename, 'rU') as resultFile:
+    with open(filename, 'rb') as resultFile:
         reader = csv.DictReader(resultFile)
         result = Result(reader.fieldnames)
         for line in reader:
@@ -285,7 +285,7 @@ def createRegisterLabels():
 def parseMemoryUsageData(fileName):
     memoryUsage = []
     try:
-        with open(fileName, 'rU') as usageFile:
+        with open(fileName, 'rb') as usageFile:
             for line in csv.reader(usageFile, delimiter = ' '):
                 try:
                     address = Memory.read(line[0], 16)
@@ -317,7 +317,7 @@ def parseDataStructure(line):
 def parseDataStructures(fileName):
     dataStructures = {}
     try:
-        with open(fileName, "rU") as structureFile:
+        with open(fileName, 'rb') as structureFile:
             for line in structureFile:
                 fieldIterator = parseDataStructure(line)
                 try:
