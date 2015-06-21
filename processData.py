@@ -212,6 +212,22 @@ def createSymbolTable(filename):
 
     return symbolTable
 
+def readSymbolTable(filename):
+    symbolTable = {}
+
+    try:
+        with open(filename, 'rb') as symbolFile:
+            for values in csv.reader(symbolFile, delimiter = ' '):
+                try:
+                    address = Memory.read(values[0], 16) 
+                    name    = ' '.join(values[2:])
+                except (IndexError, ValueError): continue
+                
+                symbolTable[address] = name
+    except IOError: pass
+
+    return symbolTable
+
 def createTimeLabels(trace, symbolTable):
     """
     Return a list of time-label-pairs.
@@ -317,7 +333,7 @@ def parseDataStructure(line):
 def parseDataStructures(fileName):
     dataStructures = {}
     try:
-        with open(fileName, 'rb') as structureFile:
+        with open(fileName, 'rU') as structureFile:
             for line in structureFile:
                 fieldIterator = parseDataStructure(line)
                 try:
@@ -415,6 +431,8 @@ def parseArguments():
     parser = ArgumentParser()
     parser.add_argument("-b", "--binary",
                         help = "object file of the tested code")
+    parser.add_argument(      "--symbol-table",
+                        help = "symbol table of the tested code")
     parser.add_argument("-t", "--trace",
                         help = "trace of the instruction pointer")
     parser.add_argument("-u", "--memory-usage",
@@ -435,11 +453,9 @@ def printStatus(status):
 
 def main():
     arguments = parseArguments()
-    binary = arguments.binary
-    
+
     root = Tk()
 
-    timeLabels = {}
     if arguments.register:
         printStatus("Parse register test results ...")
         data, trace = parseResults(arguments.data, Register)
@@ -464,11 +480,20 @@ def main():
         positionLabels = createMemoryLabels(data, memoryUsage, dataStructures)
         printStatus("Done")
 
-    if binary is not None:
+    timeLabels = {}
+    symbolTable = None
+
+    if arguments.binary is not None:
         printStatus("Create symbol table ...")
-        symbolTable = createSymbolTable(binary)
+        symbolTable = createSymbolTable(arguments.binary)
         printStatus("Done")
 
+    if arguments.symbol_table is not None:
+        printStatus("Read symbol table ...")
+        symbolTable = readSymbolTable(arguments.symbol_table)
+        printStatus("Done")
+
+    if symbolTable is not None:
         printStatus("Create time labels ...")
         timeLabels = createTimeLabels(trace, symbolTable)
         printStatus("Done")
