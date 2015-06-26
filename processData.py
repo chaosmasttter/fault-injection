@@ -295,7 +295,7 @@ def createRegisterLabels():
         upper = lower + Register.bits
         labels.append((('', Register.show(register)), (lower, upper)))
 
-    labes.reverse()
+    labels.reverse()
     return labels
 
 def parseMemoryUsageData(fileName):
@@ -504,7 +504,7 @@ def main():
         Result.ASSERT_FAILED:            'blue',
         Result.DOUBLE_FAULT:             'yellow',
         Result.GENERAL_PROTECTION_FAULT: 'purple',
-        Result.USER_ERROR:               'darkgreen',
+        Result.USER_ERROR:               'brown',
         Result.OTHER_ERROR:              'orange'
     }
 
