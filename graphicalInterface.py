@@ -1,5 +1,6 @@
 from Tkinter import Tk, Canvas, Scrollbar, HORIZONTAL, VERTICAL
 import ttk as themed
+from canvasvg import SVGdocument, convert
 
 class Visualisation(object):
     def __init__(self, parent, data, coloring,
@@ -83,6 +84,8 @@ class Visualisation(object):
         self.content.bind('<Enter>', lambda _: self.content  .focus_set())
         self.content.bind('<Leave>', lambda _: self.mainframe.focus_set())
 
+        self.mainframe.bind_all('p', lambda _: self.saveScreenshot())
+
         # place everything on the screen
         self.timeLabels      .grid(column = 1, row = 0, sticky = 'nsew')
         self.positionLabels  .grid(column = 0, row = 1, sticky = 'nsew')
@@ -106,6 +109,61 @@ class Visualisation(object):
     def force(self, function = None, *arguments):
         if callable(function): function(*arguments)
         self.mainframe.update_idletasks()
+
+    def saveScreenshot(self):
+        document = SVGdocument()
+
+        def setViewBox(graphic, width, height, x, y, X = None, Y = None):
+            if X is None: X = width
+            else: X -= x
+            if Y is None: Y = height
+            else: Y -= y
+
+            graphic.setAttribute('width',   "%0.3f" % width)
+	    graphic.setAttribute('height',  "%0.3f" % height)
+	    graphic.setAttribute('viewBox', "%0.3f %0.3f %0.3f %0.3f" % (x, y, X, Y))
+            return graphic
+
+        def createGraphic(canvas):
+            graphic = document.createElement('svg')
+
+            width  = canvas.winfo_width()
+            height = canvas.winfo_height()
+
+            x = canvas.canvasx(0)
+            y = canvas.canvasy(0)
+            X = canvas.canvasx(width)
+            Y = canvas.canvasy(height)
+
+            setViewBox(graphic, width, height, x, y, X, Y)
+
+            for element in convert(document, canvas, canvas.find_overlapping(x, y, X, Y)):
+	        graphic.appendChild(element)
+
+            document.documentElement.appendChild(graphic)
+
+            return graphic, width, height
+
+        _, contentWidth, contentHeight = createGraphic(self.content)
+
+        timeLabelsGraphic, _, timeLabelsHeight = createGraphic(self.timeLabels)
+        timeLabelsGraphic.setAttribute('y', "-%0.3f" % timeLabelsHeight)
+
+        positionLabelsGraphic, positionLabelsWidth, _ = createGraphic(self.positionLabels)
+        positionLabelsGraphic.setAttribute('x', "-%0.3f" % positionLabelsWidth)
+
+        contentHeight += 5
+
+        legendGraphic, _, legendHeight = createGraphic(self.legend)
+        legendGraphic.setAttribute('y', "%0.3f" % contentHeight)
+
+        setViewBox(document.documentElement,
+                   positionLabelsWidth + contentWidth,
+                   timeLabelsHeight + contentHeight + legendHeight,
+                   - positionLabelsWidth, - timeLabelsHeight)
+
+        with open('screenshot.svg', 'w') as screenshot:
+            screenshot.write(document.toxml())
 
     def zoom(self, scale, event):
         x, y = self.content.canvasx(event.x), self.content.canvasy(event.y)
