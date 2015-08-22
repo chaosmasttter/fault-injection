@@ -44,7 +44,7 @@ class Visualisation(object):
         self.timeLabels.defaultTextSize = self.timeLabels.bbox(defaultText)[3]
         self.timeLabels.delete(defaultText)
 
-        self.plot(timeLabels, positionGroups, mirror)
+        self.plot(timeLabels, positionGroups, None, mirror)
 
         self.scrollHorizontal = themed.Scrollbar(self.mainframe, orient = HORIZONTAL)
         self.scrollVertical   = themed.Scrollbar(self.mainframe, orient = VERTICAL)
@@ -284,11 +284,11 @@ class Visualisation(object):
                 else:
                     self.positionLabels.itemconfigure(lowerLabel, state = 'hidden')
                     self.positionLabels.itemconfigure(upperLabel, state = 'hidden')
+
             if superstructure:
                 oldLowerBound, oldUpperBound, structure = superstructure.pop()
                 lowerBound = oldLowerBound
                 upperBound = oldUpperBound
-            
 
     def plot(self, timeLabels, positions, locationInformation, mirror = True):
         self.timeLabels.lines = {}
