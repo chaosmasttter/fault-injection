@@ -284,11 +284,11 @@ class Visualisation(object):
                 else:
                     self.positionLabels.itemconfigure(lowerLabel, state = 'hidden')
                     self.positionLabels.itemconfigure(upperLabel, state = 'hidden')
+
             if superstructure:
                 oldLowerBound, oldUpperBound, structure = superstructure.pop()
                 lowerBound = oldLowerBound
                 upperBound = oldUpperBound
-            
 
     def plot(self, timeLabels, positions, locationInformation, mirror = True):
         self.timeLabels.lines = {}
