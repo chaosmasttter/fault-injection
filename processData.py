@@ -346,7 +346,7 @@ def parseDataStructures(fileName):
                 for subType, subName, offset in zip(* [fieldIterator] * 3):
                     substructures.append((int(offset), subType, subName))
                 if structure != []:
-                    dataStructures[structureName] = structurestructure
+                    dataStructures[structureName] = structure
     except IOError: pass
     return dataStructures
 
