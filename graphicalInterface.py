@@ -1,4 +1,5 @@
 from Tkinter import Tk, Canvas, Scrollbar, HORIZONTAL, VERTICAL
+from tkFileDialog import asksaveasfile
 import ttk as themed
 from canvasvg import SVGdocument, convert
 
@@ -43,7 +44,7 @@ class Visualisation(object):
         self.timeLabels.defaultTextSize = self.timeLabels.bbox(defaultText)[3]
         self.timeLabels.delete(defaultText)
 
-        self.plot(timeLabels, positionGroups, mirror)
+        self.plot(timeLabels, positionGroups, None, mirror)
 
         self.scrollHorizontal = themed.Scrollbar(self.mainframe, orient = HORIZONTAL)
         self.scrollVertical   = themed.Scrollbar(self.mainframe, orient = VERTICAL)
@@ -90,10 +91,10 @@ class Visualisation(object):
         self.timeLabels      .grid(column = 1, row = 0, sticky = 'nsew')
         self.positionLabels  .grid(column = 0, row = 1, sticky = 'nsew')
         self.content         .grid(column = 1, row = 1, sticky = 'nsew')
-        self.scrollHorizontal.grid(column = 1, row = 2, sticky = 'nsew')
         self.scrollVertical  .grid(column = 2, row = 1, sticky = 'nsew')
-        self.locationLabel   .grid(column = 1, row = 3, sticky = 'nsew')
-        self.legend          .grid(column = 1, row = 4, sticky = 'nsew')
+        self.scrollHorizontal.grid(column = 1, row = 2, sticky = 'nsew')
+        self.legend          .grid(column = 1, row = 3, sticky = 'nsew')
+        self.locationLabel   .grid(column = 1, row = 4, sticky = 'nsew')
 
         self.mainframe.columnconfigure(1, weight = 1)
         self.mainframe.rowconfigure(   1, weight = 1)
@@ -144,7 +145,7 @@ class Visualisation(object):
 
             return graphic, width, height
 
-        _, contentWidth, contentHeight = createGraphic(self.content)
+        contentWidth, contentHeight = createGraphic(self.content)[1:]
 
         timeLabelsGraphic, _, timeLabelsHeight = createGraphic(self.timeLabels)
         timeLabelsGraphic.setAttribute('y', "-%0.3f" % timeLabelsHeight)
@@ -162,8 +163,14 @@ class Visualisation(object):
                    timeLabelsHeight + contentHeight + legendHeight,
                    - positionLabelsWidth, - timeLabelsHeight)
 
-        with open('screenshot.svg', 'w') as screenshot:
-            screenshot.write(document.toxml())
+        savefile = asksaveasfile(defaultextension = '.svg',
+                                 initialfile = 'screenshot.svg',
+                                 title = 'Select file to store the screenshot.',
+                                 parent = self.mainframe)
+
+        if savefile:
+            with savefile as screenshot:
+                screenshot.write(document.toxml())
 
     def zoom(self, scale, event):
         x, y = self.content.canvasx(event.x), self.content.canvasy(event.y)

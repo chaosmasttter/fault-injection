@@ -300,6 +300,7 @@ def createRegisterLabels():
 
 def parseMemoryUsageData(fileName):
     memoryUsage = []
+    if fileName is None: return memoryUsage
     try:
         with open(fileName, 'rb') as usageFile:
             for line in csv.reader(usageFile, delimiter = ' '):
@@ -332,19 +333,20 @@ def parseDataStructure(line):
 
 def parseDataStructures(fileName):
     dataStructures = {}
+    if fileName is None: return dataStructures
     try:
         with open(fileName, 'rU') as structureFile:
             for line in structureFile:
                 fieldIterator = parseDataStructure(line)
                 try:
-                    structureName = next(fieldIterator)
-                    next(fieldIterator)
+                    structureType = next(fieldIterator)
+                    structureSize = next(fieldIterator)
                 except StopIteration: continue
-                structure = []
-                for name, offset in zip(* [fieldIterator] * 2):
-                    structure.append((int(offset), name))
+                substructures = []
+                for subType, subName, offset in zip(* [fieldIterator] * 3):
+                    substructures.append((int(offset), subType, subName))
                 if structure != []:
-                    dataStructures[structureName] = structure
+                    dataStructures[structureName] = structurestructure
     except IOError: pass
     return dataStructures
 
