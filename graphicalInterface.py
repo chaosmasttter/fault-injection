@@ -91,10 +91,10 @@ class Visualisation(object):
         self.timeLabels      .grid(column = 1, row = 0, sticky = 'nsew')
         self.positionLabels  .grid(column = 0, row = 1, sticky = 'nsew')
         self.content         .grid(column = 1, row = 1, sticky = 'nsew')
-        self.scrollHorizontal.grid(column = 1, row = 2, sticky = 'nsew')
         self.scrollVertical  .grid(column = 2, row = 1, sticky = 'nsew')
-        self.locationLabel   .grid(column = 1, row = 3, sticky = 'nsew')
-        self.legend          .grid(column = 1, row = 4, sticky = 'nsew')
+        self.scrollHorizontal.grid(column = 1, row = 2, sticky = 'nsew')
+        self.legend          .grid(column = 1, row = 3, sticky = 'nsew')
+        self.locationLabel   .grid(column = 1, row = 4, sticky = 'nsew')
 
         self.mainframe.columnconfigure(1, weight = 1)
         self.mainframe.rowconfigure(   1, weight = 1)
