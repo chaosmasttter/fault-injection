@@ -35,16 +35,29 @@ class DataClass(Structure):
     def description(self, label = None):
         return 'class ' + super(DataClass, self).description(label)
 
-class Substructure(namedtuple('Substructure', ['structure', 'label', 'constant', 'offset'])):
-    def __new__(self_class, structure, label = None, constant = False, offset = 0):
-        return super(Substructure, self_class).__new__(self_class, structure, label, constant, offset)
+class Substructure(namedtuple('Substructure', ['structure', 'label', 'offset'])):
+    def __new__(self_class, structure, label = None, offest = 0):
+        return super(Substructure, self_class).__new__(self_class, structure, label, offset)
 
     def description(self):
         return self.structure.description(self.label)
 
+class SpecificStructure(namedtuple('SpecificStructure', ['structure', 'constant', 'volatile'])):
+    def __new__(self_class, structure, constant = False, volatile = False):
+        return super(SpecificStructure, self_class).__new__(self_class, structure, constant, volatile)
+
+    def description(self, label = None):
+        descriptor = self.structure.description(self.label)
+        if constant: descriptor = 'constant ' + descriptor
+        if volatile: descriptor = 'volatile ' + descriptor
+        return descriptor
+
 class Pointer(Substructure):
-    def description(self):
-        return self.structure.description('* ' + self.label)
+    def description(self, lable = None):
+        if constant: descriptors.append('constant')
+        if volatile: descriptors.append('volatile')
+        if label is not None: descriptors.append(label)
+        return self.structure.description(' '.join(descriptors))
 
 def parse_recursive(string):
     separators = ';&$%?#@'
@@ -81,16 +94,60 @@ def parse_recursive(string):
 
         fields = tuple(parse_fields(segments[0].strip()))
 
-        if len(fields) % 2 == 0:
-            structure = Structure(fields[0], fields[-1], substructures)
-        else: 
-            structure = Structure(fields[0], substructures = substructures)
+        if not substructure:
+            try:               size = fields[1]
+            except IndexError: size = None
 
-        if substructure: return Substructure(structure, fields[1], fields[2])
-        else: return structure
+            return Structure(fields[0], size, substructures)
+
+        try:               size = fields[3]
+        except IndexError: size = None
+
+        pointer_partition = fields[0].partition('*')
+
+        constant, name = parse_keyword(pointer_partition[0], 'const')
+        volatile, name = parse_keyword(name, 'volatile')
+
+        is_enumeration, name = parse_keyword(name, 'enum')
+        is_structure,   name = parse_keyword(name, 'struct')
+        is_union,       name = parse_keyword(name, 'union')
+        is_class,       name = parse_keyword(name, 'class')
+
+        if not (is_enumeration or is_structure or is_union or is_class):
+            structure = Structure(name, size, substructures)
+        elif is_enumeration and not (is_structure or is_union):
+            structure = DataEnumeration(name, size, substructures)
+        elif is_structure and not (is_enumeration or is_union or is_class):
+            structure = DataStructure(name, size, substructures)
+        elif is_union and not (is_enumeration or is_structure or is_class):
+            structure = DataUnion(name, size, substructures)
+        elif is_class and not (is_enumeration or is_structure or is_union):
+            structure = DataClass(name, size, substructures)
+        else: raise ValueError()
+
+        structure = SpecificStructure(structure, constant, volatile)
+
+        while pointer_partition[1]:
+            pass
+
+    def parse_keyword(name, keyword):
+        if not name: return False, name
+    
+        partitions = name.partition(keyword)
+        if not partitions[1]: return False, name
+    
+        if partitions[0]:
+            preceding  = partitions[0][-1]
+            if not  preceding.isspace(): return False, name
+        if partitions[2]:
+            succeeding = partitions[-1][0]
+            if not succeeding.isspace(): return False, name
+    
+        return True, (partitions[0].strip() + ' ' + partitions[2].strip()).strip()
 
     for line in lines:
         structure = parse_structure(line)
         structures[structure.name] = structure
 
     return structures
+
