@@ -6,10 +6,11 @@ identifier = 0
 class Structure(namedtuple('Structure', ['name', 'size', 'substructures'])):
     def __new__(self_class, name = '', size = None, substructures = None):
         if not name:
+            global identifier
             name = '#{:d}'.format(identifier)
             identifier += 1
         if substructures is None: substructures = SortedDict()
-        return super(DataStructure, self_class).__new__(self_class, name, size, substructures)
+        return super(Structure, self_class).__new__(self_class, name, size, substructures)
 
     def description(self, label = None):
         descriptors = [self.name]
@@ -36,7 +37,7 @@ class DataClass(Structure):
         return 'class ' + super(DataClass, self).description(label)
 
 class Substructure(namedtuple('Substructure', ['structure', 'label', 'offset'])):
-    def __new__(self_class, structure, label = None, offest = 0):
+    def __new__(self_class, structure, label = None, offset = 0):
         return super(Substructure, self_class).__new__(self_class, structure, label, offset)
 
     def description(self):
@@ -52,7 +53,7 @@ class SpecificStructure(namedtuple('SpecificStructure', ['structure', 'constant'
         if volatile: descriptor = 'volatile ' + descriptor
         return descriptor
 
-class Pointer(Substructure):
+class Pointer(SpecificStructure):
     def description(self, lable = None):
         if constant: descriptors.append('constant')
         if volatile: descriptors.append('volatile')
@@ -62,30 +63,34 @@ class Pointer(Substructure):
 def parse_recursive(string):
     separators = ';&$%?#@'
     structures = {}
-    
+
     lines = string.strip().split('\n')
 
     def parse_fields(fields):
-        count = 0
+        imbalance = { '<>' : 0, '()' : 0 }
 	field = []
 
 	for char in fields:
-	    if count == 0 and char == ',':
+	    if not any(imbalance.values()) and char == ',':
 	        yield ''.join(field).strip()
 	        field = []
 	        continue
 
-	    if char == '<':
-	        count += 1
-	    if char == '>':
-	        count -= 1
-	
+	    elif char == '<':
+	        imbalance['<>'] += 1
+	    elif char == '>':
+	        imbalance['<>'] -= 1
+            elif char == '(':
+                imbalance['()'] += 1
+            elif char == ')':
+                imbalance['()'] -= 1
 	    field.append(char)
 
         if field: yield ''.join(field).strip()
 
     def parse_structure(line, depth = 0, substructure = False):
-        segments = line.strip().split(separators[depth])
+        try:               segments = line.strip().split(separators[depth])
+        except IndexError: segments = [line.strip()]
 
         substructures = SortedDict()
         for segment in segments[1:]:
@@ -102,6 +107,15 @@ def parse_recursive(string):
 
         try:               size = fields[3]
         except IndexError: size = None
+
+        try:               offset = fields[2]
+        except IndexError: offset = None
+
+        try:               label = fields[1]
+        except IndexError: label = None
+
+        if '(' in fields[0] or ')' in fields[0]:
+            return Substructure(Structure(fields[0], size, substructures), label, offset)
 
         pointer_partition = fields[0].partition('*')
 
@@ -128,21 +142,29 @@ def parse_recursive(string):
         structure = SpecificStructure(structure, constant, volatile)
 
         while pointer_partition[1]:
-            pass
+            pointer_partition = pointer_partition[2].partition('*')
+            constant, keywords = parse_keyword(pointer_partition[0], 'const')
+            volatile, keywords = parse_keyword(keywords, 'volatile')
+            if keywords: raise ValueError()
+
+            structure = Pointer(structure, constant, volatile)
+
+        return Substructure(structure, label, offset)
 
     def parse_keyword(name, keyword):
         if not name: return False, name
-    
+
+        name = name.strip()
         partitions = name.partition(keyword)
         if not partitions[1]: return False, name
-    
+
         if partitions[0]:
             preceding  = partitions[0][-1]
             if not  preceding.isspace(): return False, name
         if partitions[2]:
             succeeding = partitions[-1][0]
             if not succeeding.isspace(): return False, name
-    
+
         return True, (partitions[0].strip() + ' ' + partitions[2].strip()).strip()
 
     for line in lines:
@@ -150,4 +172,3 @@ def parse_recursive(string):
         structures[structure.name] = structure
 
     return structures
-
