@@ -2,7 +2,7 @@
 
 import re
 import csv
-import sys
+from sys import stdout
 from bisect import bisect
 from decimal import Decimal
 from struct import unpack
@@ -37,10 +37,10 @@ class Result:
     bit = None
     register = None
     address = None
-    instructionPointer = None
-    timeStart = None
-    timeEnd = None
-    resultType = None
+    instruction_pointer = None
+    start_time = None
+    end_time = None
+    result_type = None
     output = None
 
     def __init__(self, names):
@@ -51,44 +51,44 @@ class Result:
             else: base = 10
 
             if re.search('bit_offset', name):
-                def parseBit(result, name = name, base = base):
+                def parse_bit(result, name = name, base = base):
                     self.bit = int(result[name], base)
-                self.parsers.append(parseBit)
+                self.parsers.append(parse_bit)
             elif re.search('register_offset', name):
-                def parseRegister(result, name = name):
+                def parse_register(result, name = name):
                     self.register = Register.read(result[name])
-                self.parsers.append(parseRegister)
+                self.parsers.append(parse_register)
             elif re.search('injection_address', name):
-                def parseAddress(result, name = name, base = base):
+                def parse_address(result, name = name, base = base):
                     self.address = Memory.read(result[name], base)
-                self.parsers.append(parseAddress)
+                self.parsers.append(parse_address)
             elif re.search('injection_ip', name):
-                def parseInstructionPointer(result, name = name, base = base):
-                    self.instructionPointer = Memory.read(result[name], base)
-                self.parsers.append(parseInstructionPointer)
+                def parse_instruction_pointer(result, name = name, base = base):
+                    self.instruction_pointer = Memory.read(result[name], base)
+                self.parsers.append(parse_instruction_pointer)
             elif re.search('time1', name):
-                def parseStartTime(result, name = name, base = base):
-                    self.startTime = int(result[name], base)
-                self.parsers.append(parseStartTime)
+                def parse_start_time(result, name = name, base = base):
+                    self.start_time = int(result[name], base)
+                self.parsers.append(parse_start_time)
             elif re.search('time2', name):
-                def parseEndTime(result, name = name, base = base):
-                    self.endTime = int(result[name], base)
-                self.parsers.append(parseEndTime)
+                def parse_end_time(result, name = name, base = base):
+                    self.end_time = int(result[name], base)
+                self.parsers.append(parse_end_time)
             elif re.search('resulttype', name):
-                def parseResultType(result, name = name):
-                    self.resultType = result[name]
-                self.parsers.append(parseResultType)
+                def parse_result_type(result, name = name):
+                    self.result_type = result[name]
+                self.parsers.append(parse_result_type)
             elif re.search('output', name):
-                def parseOutput(result, name = name):
+                def parse_output(result, name = name):
                     self.output = result[name]
-                self.parsers.append(parseOutput)
+                self.parsers.append(parse_output)
 
     def classify(self):
         """
         Get result constant corresponding to the experiment result.
         """
 
-        if self.resultType == "DONE":
+        if self.result_type == "DONE":
             return Result.OK
 
         elif re.search("DOUBLE FAULT", self.output):
@@ -120,7 +120,7 @@ class Result:
         elif re.search("Error: Item", self.output):
             return Result.WRONG
 
-        elif self.resultType == "WRONG":
+        elif self.result_type == "WRONG":
             return Result.WRONG
         else:
             return Result.OTHER_ERROR
@@ -161,7 +161,7 @@ class Register(object):
         raise ValueError('Register.show: not a register number')
 
     @staticmethod
-    def bitPosition(result):
+    def bit_position(result):
         if result.bit is not None and result.register is not None:
             return result.register * Register.bits + result.bit
 
@@ -183,21 +183,21 @@ class Memory(object):
         return "0x{:X}".format(address)
 
     @staticmethod
-    def bitPosition(result):
+    def bit_position(result):
         if result.bit is not None and result.address is not None:
             return result.address * Memory.bits + result.bit
 
-def createSymbolTable(filename):
+def create_symbol_table(filename):
     """
     Return a dictionary of address to symbol mappings for the given file.
 
-    The filename should correspond to an C++ object file.
-
     Extract the symbols using the tool 'nm'.
     Ignore the type of the symbol.
+
+    The filename should correspond to an C++ object file.
     """
 
-    symbolTable = {}
+    symbol_table = {}
 
     # use '-C' to demangle C++ names
     for line in check_output(['nm', '-C', filename]).strip().split('\n'):
@@ -208,38 +208,48 @@ def createSymbolTable(filename):
             name    = values[2]
         except (IndexError, ValueError): continue
 
-        symbolTable[address] = name
+        symbol_table[address] = name
 
-    return symbolTable
+    return symbol_table
 
-def readSymbolTable(filename):
-    symbolTable = {}
+def read_symbol_table(filename):
+    """
+    Read the dictionary of address to symbol mappings from the given file.
+
+    Ignore the type of the symbol.
+
+    The filename should correspond to a file
+    containing the output of the 'nm' tool for an C++ object file.
+    """
+
+    symbol_table = {}
 
     try:
-        with open(filename, 'rb') as symbolFile:
-            for values in csv.reader(symbolFile, delimiter = ' '):
+        with open(filename, 'rb') as symbol_file:
+            for values in csv.reader(symbol_file, delimiter = ' '):
+                # values : [ 'address', 'symbol type', 'symbol name' ]
                 try:
                     address = Memory.read(values[0], 16) 
                     name    = ' '.join(values[2:])
                 except (IndexError, ValueError): continue
-                
-                symbolTable[address] = name
+
+                symbol_table[address] = name
     except IOError: pass
 
-    return symbolTable
+    return symbol_table
 
-def createTimeLabels(trace, symbolTable):
+def create_time_labels(trace, symbol_table):
     """
     Return a list of time-label-pairs.
 
     Arguments:
       trace - list of time-instruction pointer-pairs
-      symbolTable - dictionary of address-symbol-mappings
+      symbol_table - dictionary of address-symbol-mappings
 
     Process the trace in the order of the times.
     Foreach instruction pointer in the trace:
       Lookup the symbol with the biggest address 
-      smaller or equal to the instruction pointer.
+      less than or equal to the instruction pointer.
       If the symbol is not the same as for the previous instruction pointer:
         Append the time and symbol to the final list.
     """
@@ -248,46 +258,46 @@ def createTimeLabels(trace, symbolTable):
     labels = []
 
     # sorted list of all addresses in the symbol table
-    symbolAddresses = sorted(symbolTable)
+    symbol_addresses = sorted(symbol_table)
 
-    lastSymbol = None
-    for time, instructionPointer in sorted(trace):
+    last_symbol = None
+    for time, instruction_pointer in sorted(trace):
         try:
             # the biggest address smaller or equal to the instruction pointer
-            address = symbolAddresses[bisect(symbolAddresses, instructionPointer) - 1]
+            address = symbol_addresses[bisect(symbol_addresses, instruction_pointer) - 1]
             # lookup the corresponding symbol and extract the function name
-            symbol = symbolTable[address].split('(')[0]
+            symbol = symbol_table[address].split('(')[0]
 
             # only add a label if the symbol changed
-            if symbol != lastSymbol:
+            if symbol != last_symbol:
                 labels.append((time, symbol))
-                lastSymbol = symbol
+                last_symbol = symbol
         except IndexError: pass # ignore instruction pointer with no corresponding symbol
 
     return labels
 
-def parseResults(filename, dataClass):
+def parse_results(filename, data_class):
     data = {}
     trace = {}
 
-    with open(filename, 'rb') as resultFile:
-        reader = csv.DictReader(resultFile)
+    with open(filename, 'rb') as result_file:
+        reader = csv.DictReader(result_file)
         result = Result(reader.fieldnames)
         for line in reader:
             result.parse(line)
-            bitPosition = dataClass.bitPosition(result)
+            bit_position = data_class.bit_position(result)
 
-            if result.instructionPointer is not None and result.endTime is not None:
-                trace[result.endTime - 1] = result.instructionPointer
+            if result.instruction_pointer is not None and result.end_time is not None:
+                trace[result.end_time - 1] = result.instruction_pointer
 
-            if bitPosition is not None \
-              and result.startTime is not None and result.endTime is not None:
-                if bitPosition not in data: data[bitPosition] = {}
-                data[bitPosition][result.startTime - 1, result.endTime] = result.classify()
+            if bit_position is not None \
+              and result.start_time is not None and result.end_time is not None:
+                if bit_position not in data: data[bit_position] = {}
+                data[bit_position][result.start_time - 1, result.end_time] = result.classify()
 
     return data, trace.items()
 
-def createRegisterLabels():
+def create_register_labels():
     labels = []
 
     for register in range(Register.count):
@@ -298,9 +308,10 @@ def createRegisterLabels():
     labels.reverse()
     return labels
 
-def parseMemoryUsageData(fileName):
+def parse_memory_usage_data(fileName):
     memoryUsage = []
     if fileName is None: return memoryUsage
+
     try:
         with open(fileName, 'rb') as usageFile:
             for line in csv.reader(usageFile, delimiter = ' '):
@@ -314,43 +325,7 @@ def parseMemoryUsageData(fileName):
     except IOError: pass
     return memoryUsage
 
-def parseDataStructure(line):
-    depth = 0
-    nextResult = []
-    for char in line:
-        if depth == 0 and char == ',':
-            yield ''.join(nextResult).strip()
-            nextResult = []
-            continue
-
-        if char == '<':
-            depth += 1
-        if char == '>':
-            depth -= 1
-
-        nextResult.append(char)
-    yield ''.join(nextResult).strip()
-
-def parseDataStructures(fileName):
-    dataStructures = {}
-    if fileName is None: return dataStructures
-    try:
-        with open(fileName, 'rU') as structureFile:
-            for line in structureFile:
-                fieldIterator = parseDataStructure(line)
-                try:
-                    structureType = next(fieldIterator)
-                    structureSize = next(fieldIterator)
-                except StopIteration: continue
-                substructures = []
-                for subType, subName, offset in zip(* [fieldIterator] * 3):
-                    substructures.append((int(offset), subType, subName))
-                if structure != []:
-                    dataStructures[structureName] = structure
-    except IOError: pass
-    return dataStructures
-
-def createMemoryLabels(data, memoryUsage = [], dataStructures = {}):
+def create_memory_labels(data, memoryUsage = [], dataStructures = {}):
     maximalDistance = 8 * 8
     clusters = []
 
@@ -429,7 +404,7 @@ def createMemoryLabels(data, memoryUsage = [], dataStructures = {}):
 
     return labels
 
-def parseArguments():
+def parse_arguments():
     parser = ArgumentParser()
     parser.add_argument("-b", "--binary",
                         help = "object file of the tested code")
@@ -447,60 +422,55 @@ def parseArguments():
                         help = "show visualisation for register instead of memory")
     return parser.parse_args()
 
-def printStatus(status):
-    print status,
-    if status == "Done": print
-
-    sys.stdout.flush()
+def print_status(description, function, *arguments, **keyword_arguments):
+    print description, '...',
+    stdout.flush()
+    result = function(*arguments, **keyword_arguments)
+    print 'done'
+    stdout.flush()
+    return result
 
 def main():
-    arguments = parseArguments()
+    arguments = parse_arguments()
 
     root = Tk()
 
     if arguments.register:
-        printStatus("Parse register test results ...")
-        data, trace = parseResults(arguments.data, Register)
-        printStatus("Done")
+        data, trace = print_status('parse register test results',
+                                    parse_results, arguments.data, Register)
 
-        printStatus("Create register labels ...")
-        positionLabels = createRegisterLabels()
-        printStatus("Done")
+        position_labels = print_status('create register labels',
+                                        create_register_labels)
 
     else:
-        printStatus("Parse memory test results ...")
-        data, trace = parseResults(arguments.data, Memory)
-        printStatus("Done")
+        data, trace = print_status('parse memory test results',
+                                    parse_results, arguments.data, Memory)
 
-        printStatus("Parse memory usage data ...")
-        memoryUsage = parseMemoryUsageData(arguments.memory_usage)
-        printStatus("Done")
-        printStatus("Parse data structures ...")
-        dataStructures = parseDataStructures(arguments.data_structures)
-        printStatus("Done")
-        printStatus("Create memory labels ...")
-        positionLabels = createMemoryLabels(data, memoryUsage, dataStructures)
-        printStatus("Done")
+        memory_usage = print_status('parse memory usage data',
+                                     parse_memory_usage_data, arguments.memory_usage)
 
-    timeLabels = {}
-    symbolTable = None
+        data_structures = print_status('parse data structures',
+                                        parse_structures_recursive, arguments.data_structures)
+
+        position_labels = print_status('create memory labels',
+                                        create_memory_labels, data, memory_usage, data_structures)
+
+    time_labels = {}
+    symbol_table = None
 
     if arguments.binary is not None:
-        printStatus("Create symbol table ...")
-        symbolTable = createSymbolTable(arguments.binary)
-        printStatus("Done")
+        symbol_table = print_status('create symbol table',
+                                     create_symbol_table, arguments.binary)
 
     if arguments.symbol_table is not None:
-        printStatus("Read symbol table ...")
-        symbolTable = readSymbolTable(arguments.symbol_table)
-        printStatus("Done")
+        symbol_table = print_status('read symbol table',
+                                     read_symbol_table, arguments.symbol_table)
 
-    if symbolTable is not None:
-        printStatus("Create time labels ...")
-        timeLabels = createTimeLabels(trace, symbolTable)
-        printStatus("Done")
+    if symbol_table is not None:
+        time_labels = print_status('create time labels',
+                                    create_time_labels, trace, symbol_table)
 
-    colorMap = {
+    color_map = {
         Result.OK:                       'green',
         Result.WRONG:                    'red',
         Result.ASSERT_FAILED:            'blue',
@@ -520,11 +490,11 @@ def main():
         Result.OTHER_ERROR:              'other error'
     }
 
-    printStatus("Create visualisation frame ...")
-    Visualisation(root, data, colorMap, explanation, timeLabels, positionLabels
-                 ).mainframe.grid(column = 0, row = 0, sticky = 'nsew')
-    printStatus("Done")
-    
+    visualisation = print_status('create visualisation frame',
+                                  Visualisation, root, data, color_map, explanation, time_labels, position_labels)
+
+    visualisation.mainframe.grid(column = 0, row = 0, sticky = 'nsew')
+
     root.columnconfigure( 0, weight = 1 )
     root.rowconfigure(    0, weight = 1 )
     root.mainloop()
