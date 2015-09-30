@@ -5,11 +5,13 @@ import csv
 from sys import stdout
 from bisect import bisect
 from decimal import Decimal
-from struct import unpack
 from subprocess import check_output
 from argparse import ArgumentParser
 from Tkinter import Tk
+
 from graphicalInterface import Visualisation
+from structures import parse_recursiv,
+from grouping import Grouping, Group, Choice
 
 class Result:
     """
@@ -298,34 +300,33 @@ def parse_results(filename, data_class):
     return data, trace.items()
 
 def create_register_labels():
-    labels = []
+    labels = {}
 
     for register in range(Register.count):
         lower = register * Register.bits
         upper = lower + Register.bits
-        labels.append((('', Register.show(register)), (lower, upper)))
+        labels[lower, upper] = Group(Register.show(register), group = (lower, upper))
 
-    labels.reverse()
     return labels
 
-def parse_memory_usage_data(fileName):
-    memoryUsage = []
-    if fileName is None: return memoryUsage
+def parse_memory_usage_data(file_name):
+    if file_name is None: return {}
 
+    memory_usage = {}
     try:
-        with open(fileName, 'rb') as usageFile:
-            for line in csv.reader(usageFile, delimiter = ' '):
+        with open(file_name, 'rb') as usage_file:
+            for line in csv.reader(usage_file, delimiter = ' '):
                 try:
                     address = Memory.read(line[0], 16)
                     size = int(line[1])
                     name = line[2]
                 except (IndexError, ValueError): continue
                 position = address * Memory.bits, (address + size) * Memory.bits
-                memoryUsage.append((position, name))
+                memory_usage[position] = name
     except IOError: pass
-    return memoryUsage
+    return memory_usage
 
-def create_memory_labels(data, memoryUsage = [], dataStructures = {}):
+def create_memory_labels(data, memory_usage = {}, structures = {}):
     maximalDistance = 8 * 8
     clusters = []
 
@@ -408,10 +409,8 @@ def parse_arguments():
     parser = ArgumentParser()
     parser.add_argument("-b", "--binary",
                         help = "object file of the tested code")
-    parser.add_argument(      "--symbol-table",
+    parser.add_argument("-t", "--symbol-table",
                         help = "symbol table of the tested code")
-    parser.add_argument("-t", "--trace",
-                        help = "trace of the instruction pointer")
     parser.add_argument("-u", "--memory-usage",
                         help = "file with information about the position of data structures in memory")
     parser.add_argument("-s", "--data-structures",
