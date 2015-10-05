@@ -10,11 +10,11 @@ from subprocess import check_output
 from argparse import ArgumentParser
 from tkinter import Tk
 
-from sortedcollections import SortedDict
+from sortedcontainers import SortedDict
 
 from graphicalInterface import Visualisation
-from structures import parse_recursive
-from grouping import Interval, Grouping, Group, Choice
+from structures import parse_structures_recursive
+from grouping import Interval, Grouping, Choice
 
 class Result(object):
     """
@@ -82,7 +82,7 @@ class Result(object):
             elif re.search('resulttype', name):
                 def parse_result_type(result, name = name):
                     self.result_type = result[name]
-                self.parsers.anppend(parse_result_type)
+                self.parsers.append(parse_result_type)
             elif re.search('output', name):
                 def parse_output(result, name = name):
                     self.output = result[name]
@@ -176,7 +176,7 @@ class Memory(object):
     @staticmethod
     def read(string, base):
         try:
-            address = long(string, base)
+            address = int(string, base)
         except (ValueError, TypeError):
             raise ValueError('Memory.read: not a memory address')
         if address < 0:
@@ -285,7 +285,7 @@ def parse_results(filename, data_class):
     data = {}
     trace = {}
 
-    with open(filename, 'rb') as result_file:
+    with open(filename, 'r') as result_file:
         reader = csv.DictReader(result_file)
         result = Result(reader.fieldnames)
         for line in reader:
@@ -332,14 +332,16 @@ def parse_memory_usage_data(file_name):
 def generate_clusters(positions):
     if not positions: raise StopIteration
 
-    maximalDistance = 8
+    maximalDistance = 7
     
-    lower = upper = next(positions)
+    lower = next(positions)
+    upper = lower + 1
     for position in positions:
         if position - upper > maximalDistance:
             yield Interval(lower, upper)
-            lower = upper = position
-        else: upper = position
+            lower = position
+            upper = lower + 1
+        else: upper = position + 1
     yield Interval(lower, upper)
 
 def create_memory_labels(clusters, memory_usage = None, structures = None):
@@ -348,15 +350,16 @@ def create_memory_labels(clusters, memory_usage = None, structures = None):
     children = None
     parents = []
     parent = None
-    parentChoice = None
+    parentChoice = []
     name = None
     next_clusters = []
 
     def create_group(interval):
-        labels = map(lambda value: Memory.show(value >> math.log2(Memory.bits)), interval)
-        groups[interval] = Grouping(header, footer, group = interval)
+        labels = tuple(map(lambda value: Memory.show(value >> int(math.log2(Memory.bits))), interval))
+        groups[interval] = Grouping(*labels, group = interval)
 
     def next_cluster():
+        nonlocal cluster
         if next_clusters: cluster = next_clusters.pop()
         else: cluster = next(clusters, None)
 
@@ -370,8 +373,10 @@ def create_memory_labels(clusters, memory_usage = None, structures = None):
                 if cluster.upper <= position.lower:
                     create_group(cluster)
                     parent, position, children = parents.pop()
+                    if isinstance(parent, Choice): parentChoice.pop()
                     while not children and parents:
                         parent, position, children = parents.pop()
+                        if isinstance(parent, Choice): parentChoice.pop()
                     break
                 if cluster.lower < postion.lower:
                     create_group(Interval(cluster.lower, position.lower))
@@ -381,8 +386,9 @@ def create_memory_labels(clusters, memory_usage = None, structures = None):
                         nextCluster.append(Interval(position.upper, cluster.upper))
                         cluster = Interval(cluster.lower, position.upper)
                     parent = Choice(child.description(), parent = parent, group = cluster)
-                    if parent_choice is not None: parentChoice.subgroupings[cluster] = parent
-                    groups[cluster] = parentChoice = parent
+                    if parent_choice: parentChoice[-1].subgroupings[cluster] = parent
+                    groups[cluster] = parent
+                    parentChoice.append(parent)
                 else: parent = Grouping(child.description(), parent = parent)
                 children = child.substructures
             if cluster.upper > position.upper:
@@ -391,13 +397,13 @@ def create_memory_labels(clusters, memory_usage = None, structures = None):
             else:
                 parent.group(cluster)
                 cluster = next(clusters, None)
-            if parentChoice is not None and parentChoice is not parent:
+            if parentChoice and parentChoice[-1] is not parent:
                 parentChoice.subgroupings[parent.group] = parent
                 next_cluster()                
             while not children and parents:
                 parent, position, children = parents.pop()
+                if isinstance(parent, Choice): parentChoice.pop()
             continue
-        parentChoice = None
         if name is None and memory_usage:
             position, name = memory_usage.popitem()
         if name is None or cluster.upper < position.lower:
@@ -427,7 +433,7 @@ def create_memory_labels(clusters, memory_usage = None, structures = None):
         groups[cluster] = Grouping(name, group = cluster)
         next_cluster()
 
-    return groups()
+    return groups
 
 def parse_arguments():
     parser = ArgumentParser()

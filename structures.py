@@ -60,7 +60,8 @@ class Pointer(SpecificStructure):
         if label is not None: descriptors.append(label)
         return self.structure.description(' '.join(descriptors))
 
-def parse_recursive(string):
+def parse_structures_recursive(string):
+    if string is None: return {}
     separators = ';&$%?#@'
     structures = {}
 
