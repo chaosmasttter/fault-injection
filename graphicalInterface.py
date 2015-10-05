@@ -1,6 +1,6 @@
-from Tkinter import Tk, Canvas, Scrollbar, HORIZONTAL, VERTICAL
-from tkFileDialog import asksaveasfile
-import ttk as themed
+from tkinter import Tk, Canvas, Scrollbar, HORIZONTAL, VERTICAL
+from tkinter.filedialog import asksaveasfile
+import tkinter.ttk as themed
 from canvasvg import SVGdocument, convert
 
 class Visualisation(object):
@@ -121,8 +121,8 @@ class Visualisation(object):
             else: Y -= y
 
             graphic.setAttribute('width',   "%0.3f" % width)
-	    graphic.setAttribute('height',  "%0.3f" % height)
-	    graphic.setAttribute('viewBox', "%0.3f %0.3f %0.3f %0.3f" % (x, y, X, Y))
+            graphic.setAttribute('height',  "%0.3f" % height)
+            graphic.setAttribute('viewBox', "%0.3f %0.3f %0.3f %0.3f" % (x, y, X, Y))
             return graphic
 
         def createGraphic(canvas):
@@ -139,7 +139,7 @@ class Visualisation(object):
             setViewBox(graphic, width, height, x, y, X, Y)
 
             for element in convert(document, canvas, canvas.find_overlapping(x, y, X, Y)):
-	        graphic.appendChild(element)
+                graphic.appendChild(element)
 
             document.documentElement.appendChild(graphic)
 

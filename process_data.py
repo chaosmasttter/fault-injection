@@ -1,19 +1,22 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import re
 import csv
+import math
 from sys import stdout
 from bisect import bisect
 from decimal import Decimal
 from subprocess import check_output
 from argparse import ArgumentParser
-from Tkinter import Tk
+from tkinter import Tk
+
+from sortedcollections import SortedDict
 
 from graphicalInterface import Visualisation
-from structures import parse_recursiv,
-from grouping import Grouping, Group, Choice
+from structures import parse_recursive
+from grouping import Interval, Grouping, Group, Choice
 
-class Result:
+class Result(object):
     """
     Result class describing the possible experiment results.
 
@@ -79,7 +82,7 @@ class Result:
             elif re.search('resulttype', name):
                 def parse_result_type(result, name = name):
                     self.result_type = result[name]
-                self.parsers.append(parse_result_type)
+                self.parsers.anppend(parse_result_type)
             elif re.search('output', name):
                 def parse_output(result, name = name):
                     self.output = result[name]
@@ -305,14 +308,14 @@ def create_register_labels():
     for register in range(Register.count):
         lower = register * Register.bits
         upper = lower + Register.bits
-        labels[lower, upper] = Group(Register.show(register), group = (lower, upper))
+        labels[lower, upper] = Group(Register.show(register), group = Interval(lower, upper))
 
     return labels
 
 def parse_memory_usage_data(file_name):
-    if file_name is None: return {}
+    memory_usage = []
+    if file_name is None: return memory_usage
 
-    memory_usage = {}
     try:
         with open(file_name, 'rb') as usage_file:
             for line in csv.reader(usage_file, delimiter = ' '):
@@ -321,89 +324,110 @@ def parse_memory_usage_data(file_name):
                     size = int(line[1])
                     name = line[2]
                 except (IndexError, ValueError): continue
-                position = address * Memory.bits, (address + size) * Memory.bits
-                memory_usage[position] = name
+                position = Interval(address * Memory.bits, size * Memory.bits, True)
+                memory_usage.append((position, name))
     except IOError: pass
-    return memory_usage
+    return sorted(memory_usage, reverse = True)
 
-def create_memory_labels(data, memory_usage = {}, structures = {}):
-    maximalDistance = 8 * 8
-    clusters = []
+def generate_clusters(positions):
+    if not positions: raise StopIteration
 
-    for position in sorted(data.keys()):
-        if clusters:
-            lower, upper = cluster = clusters.pop()
-            if position < upper + maximalDistance:
-                clusters.append((lower, position))
-                continue
-            clusters.append(cluster)
-        clusters.append((position, position))
-    clusters.reverse()
+    maximalDistance = 8
+    
+    lower = upper = next(positions)
+    for position in positions:
+        if position - upper > maximalDistance:
+            yield Interval(lower, upper)
+            lower = upper = position
+        else: upper = position
+    yield Interval(lower, upper)
 
-    superlabels = []
-    labels = []
+def create_memory_labels(clusters, memory_usage = None, structures = None):
+    groups = SortedDict()
+    position = None
+    children = None
+    parents = []
+    parent = None
+    parentChoice = None
+    name = None
+    next_clusters = []
 
-    superstructures = []
-    structures = sorted(memoryUsage, reverse = True)
+    def create_group(interval):
+        labels = map(lambda value: Memory.show(value >> math.log2(Memory.bits)), interval)
+        groups[interval] = Grouping(header, footer, group = interval)
 
-    ends = [Decimal('Infinity')]
+    def next_cluster():
+        if next_clusters: cluster = next_clusters.pop()
+        else: cluster = next(clusters, None)
 
-    while clusters or superstructures:
-        if structures:
-            lower, upper = cluster = clusters.pop()
-            (start, end), name = structure = structures.pop()
-
-            if lower < start:
-                if upper > start:
-                    clusters.append((start, upper))
-                    upper = start
-                    cluster = lower, upper
-
-                label = Memory.show(lower >> 3), Memory.show(upper >> 3)
-                labels.append((label, cluster))
-                structures.append(structure)
-
-            elif upper <= end:
-                labels.append(('', name))
-                superlabels.append(labels)
-                labels = []
-
-                superstructures.append(structures)
-                structures = []
-
-                ends.append(end)
-                clusters.append(cluster)
-
-                if name in dataStructures:
-                    for offset, name in sorted(dataStructures[name], reverse = True):
-                        position = start + Memory.bits * offset, end
-                        structures.append((position, name))
-                        end = position[0]
-
-            elif lower < end:
-                structures.append(structure)
-                clusters.extend([(lower, end), (end, upper)])
-            else: clusters.append(cluster)
-
-        else:
-            end = ends.pop()
-            while clusters:
-                cluster = clusters.pop()
-                if end < cluster[1]:
-                    clusters.append(cluster)
+    next_cluster()
+    while cluster is not None:
+        if children:
+            while children:
+                offset, child = children.popitem()
+                parents.append((parent, position, children))
+                position = Interval(position.lower + offset * Memory.bits, child.size * Memory.bits, True)
+                if cluster.upper <= position.lower:
+                    create_group(cluster)
+                    parent, position, children = parents.pop()
+                    while not children and parents:
+                        parent, position, children = parents.pop()
                     break
-                label = Memory.show(cluster[0] >> 3), Memory.show(cluster[1] >> 3)
-                labels.append((label, cluster))
+                if cluster.lower < postion.lower:
+                    create_group(Interval(cluster.lower, position.lower))
+                    cluster = Inteval(position.lower, cluster.upper)
+                if isinstance(child, DataUnion):
+                    if cluster.upper > position.upper:
+                        nextCluster.append(Interval(position.upper, cluster.upper))
+                        cluster = Interval(cluster.lower, position.upper)
+                    parent = Choice(child.description(), parent = parent, group = cluster)
+                    if parent_choice is not None: parentChoice.subgroupings[cluster] = parent
+                    groups[cluster] = parentChoice = parent
+                else: parent = Grouping(child.description(), parent = parent)
+                children = child.substructures
+            if cluster.upper > position.upper:
+                parent.group(Interval(cluster.lower, position.upper))
+                cluster = Interval(position.upper, cluster.upper)
+            else:
+                parent.group(cluster)
+                cluster = next(clusters, None)
+            if parentChoice is not None and parentChoice is not parent:
+                parentChoice.subgroupings[parent.group] = parent
+                next_cluster()                
+            while not children and parents:
+                parent, position, children = parents.pop()
+            continue
+        parentChoice = None
+        if name is None and memory_usage:
+            position, name = memory_usage.popitem()
+        if name is None or cluster.upper < position.lower:
+            create_group(cluster)
+            next_cluster()
+            continue
+        if cluster.lower < position.lower:
+            create_group(Interval(cluster.lower, position.lower))
+            cluster = Interval(position.lower, cluster.upper)
+            continue
+        if cluster.upper > position.upper:
+            next_clusters.append(Interval(position.upper, cluster.upper))
+            cluster = Interval(cluster.lower, position.upper)
+        if name in structures:
+            child = structures[name]
+            children = child.substructures
+            if isinstance(child, DataUnion):
+                parent = Choice(child.description(), group = cluster)
+                groups[cluster] = parentChoice = parent
+            else:
+                parent = Grouping(child.description())
+                if not children:
+                    parent.group(cluster)
+                    groups[cluster] = parent
+                    next_cluster()
+            continue
+        groups[cluster] = Grouping(name, group = cluster)
+        next_cluster()
 
-            if not superstructures: break
-
-            structures = superstructures.pop()
-            sublabels = labels
-            labels = superlabels.pop()
-            label = labels.pop()
-            labels.append((label, sublabels))
-
-    return labels
+    return groups()
 
 def parse_arguments():
     parser = ArgumentParser()
@@ -422,10 +446,10 @@ def parse_arguments():
     return parser.parse_args()
 
 def print_status(description, function, *arguments, **keyword_arguments):
-    print description, '...',
+    print(description, '...', end = ' ')
     stdout.flush()
     result = function(*arguments, **keyword_arguments)
-    print 'done'
+    print('done')
     stdout.flush()
     return result
 
@@ -448,11 +472,14 @@ def main():
         memory_usage = print_status('parse memory usage data',
                                      parse_memory_usage_data, arguments.memory_usage)
 
-        data_structures = print_status('parse data structures',
-                                        parse_structures_recursive, arguments.data_structures)
+        structures = print_status('parse data structures',
+                                  parse_structures_recursive, arguments.data_structures)
+
+        clusters = print_status('generate clusters',
+                                generate_clusters, iter(sorted(data.keys())))
 
         position_labels = print_status('create memory labels',
-                                        create_memory_labels, data, memory_usage, data_structures)
+                                        create_memory_labels, clusters, memory_usage, structures)
 
     time_labels = {}
     symbol_table = None

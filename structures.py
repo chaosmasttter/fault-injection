@@ -68,23 +68,23 @@ def parse_recursive(string):
 
     def parse_fields(fields):
         imbalance = { '<>' : 0, '()' : 0 }
-	field = []
+        field = []
 
-	for char in fields:
-	    if not any(imbalance.values()) and char == ',':
-	        yield ''.join(field).strip()
-	        field = []
-	        continue
+        for char in fields:
+            if not any(imbalance.values()) and char == ',':
+                yield ''.join(field).strip()
+                field = []
+                continue
 
-	    elif char == '<':
-	        imbalance['<>'] += 1
-	    elif char == '>':
-	        imbalance['<>'] -= 1
+            elif char == '<':
+                imbalance['<>'] += 1
+            elif char == '>':
+                imbalance['<>'] -= 1
             elif char == '(':
                 imbalance['()'] += 1
             elif char == ')':
                 imbalance['()'] -= 1
-	    field.append(char)
+            field.append(char)
 
         if field: yield ''.join(field).strip()
 

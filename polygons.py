@@ -49,11 +49,12 @@ def create_polygones(squares):
             free_edges[number] = edge
 
         if neighbours:
-            pass
+            
 
         else:
             polygon_number = count
-            polygons[count] = square.as_polygon()
+            polygon = square.as_polygon()
+            polygons[count] = polygon
             count += 1
 
         for number, edge in free_edges.items():
