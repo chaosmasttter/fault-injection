@@ -13,7 +13,7 @@ from tkinter import Tk
 from sortedcontainers import SortedDict
 
 from graphicalInterface import Visualisation
-from structures import parse_structures_recursive
+from structures import parse_structures_recursive, allows_choice
 from grouping import Interval, Grouping, Choice
 
 class Result(object):
@@ -314,8 +314,6 @@ def create_register_labels():
 
 def parse_memory_usage_data(file_name):
     memory_usage = []
-    if file_name is None: return memory_usage
-
     try:
         with open(file_name, 'r') as usage_file:
             for line in csv.reader(usage_file, delimiter = ' '):
@@ -326,8 +324,15 @@ def parse_memory_usage_data(file_name):
                 except (IndexError, ValueError): continue
                 position = Interval(address * Memory.bits, size * Memory.bits, True)
                 memory_usage.append((position, name))
-    except IOError: pass
+    except (IOError, TypeError): pass
     return sorted(memory_usage, reverse = True)
+
+def parse_structures(file_name):
+    try:
+        with open(file_name, 'r') as structures_file:
+            content = structures_file.read()
+    except (IOError, TypeError): content = ''
+    return parse_structures_recursive(content)
 
 def generate_clusters(positions):
     if not positions: raise StopIteration
@@ -363,12 +368,9 @@ def create_memory_labels(clusters, memory_usage = None, structures = None):
         if next_clusters: cluster = next_clusters.pop()
         else: cluster = next(clusters, None)
 
-    cluster = None
     next_cluster()
     while cluster is not None:
-        print(cluster)
         if children:
-            print('children')
             while children:
                 offset, child = children.popitem()
                 parents.append((parent, position, children))
@@ -384,7 +386,7 @@ def create_memory_labels(clusters, memory_usage = None, structures = None):
                 if cluster.lower < postion.lower:
                     create_group(Interval(cluster.lower, position.lower))
                     cluster = Inteval(position.lower, cluster.upper)
-                if isinstance(child, DataUnion):
+                if allows_choice(child):
                     if cluster.upper > position.upper:
                         nextCluster.append(Interval(position.upper, cluster.upper))
                         cluster = Interval(cluster.lower, position.upper)
@@ -393,8 +395,7 @@ def create_memory_labels(clusters, memory_usage = None, structures = None):
                     groups[cluster] = parent
                     parentChoice.append(parent)
                 else: parent = Grouping(child.description(), parent = parent)
-                children = child.substructures
-            print('found children')
+                children = child.inner_structure().substructures
             if cluster.upper > position.upper:
                 parent.group(Interval(cluster.lower, position.upper))
                 cluster = Interval(position.upper, cluster.upper)
@@ -423,8 +424,8 @@ def create_memory_labels(clusters, memory_usage = None, structures = None):
             cluster = Interval(cluster.lower, position.upper)
         if name in structures:
             child = structures[name]
-            children = child.substructures
-            if isinstance(child, DataUnion):
+            children = child.inner_structure().substructures
+            if allows_choice(child):
                 parent = Choice(child.description(), group = cluster)
                 groups[cluster] = parent
                 if not children:
@@ -439,6 +440,7 @@ def create_memory_labels(clusters, memory_usage = None, structures = None):
                     next_cluster()
             continue
         groups[cluster] = Grouping(name, group = cluster)
+        name = None
         next_cluster()
 
     return groups
@@ -487,7 +489,10 @@ def main():
                                      parse_memory_usage_data, arguments.memory_usage)
 
         structures = print_status('parse data structures',
-                                  parse_structures_recursive, arguments.data_structures)
+                                  parse_structures, arguments.data_structures)
+
+        for name, structure in structures.items():
+            print(name, structure)
 
         clusters = print_status('generate clusters',
                                 generate_clusters, iter(sorted(data.keys())))

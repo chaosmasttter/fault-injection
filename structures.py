@@ -20,6 +20,9 @@ class Structure(namedtuple('Structure', ['name', 'size', 'substructures'])):
             descriptors.append('(size = {:d})'.format(self.size))
         return ' '.join(descriptors)
 
+    def inner_structure(self):
+        return self
+
 class DataEnumeration(Structure):
     def description(self, label = None):
         return 'enumeration ' + super(DataEnumeration, self).description(label)
@@ -48,13 +51,16 @@ class SpecificStructure(namedtuple('SpecificStructure', ['structure', 'constant'
         return super(SpecificStructure, self_class).__new__(self_class, structure, constant, volatile)
 
     def description(self, label = None):
-        descriptor = self.structure.description(self.label)
+        descriptor = self.structure.description(label)
         if constant: descriptor = 'constant ' + descriptor
         if volatile: descriptor = 'volatile ' + descriptor
         return descriptor
 
+    def inner_structure(self):
+        return self.structure.inner_structure()
+
 class Pointer(SpecificStructure):
-    def description(self, lable = None):
+    def description(self, label = None):
         if constant: descriptors.append('constant')
         if volatile: descriptors.append('volatile')
         if label is not None: descriptors.append(label)
@@ -109,8 +115,8 @@ def parse_structures_recursive(string):
         try:               size = fields[3]
         except IndexError: size = None
 
-        try:               offset = fields[2]
-        except IndexError: offset = None
+        try:               offset = int(fields[2])
+        except IndexError: offset = 0
 
         try:               label = fields[1]
         except IndexError: label = None
@@ -173,3 +179,6 @@ def parse_structures_recursive(string):
         structures[structure.name] = structure
 
     return structures
+
+def allows_choice(instance):
+    return isinstance(instance.inner_structure(), DataUnion)
