@@ -317,7 +317,7 @@ def parse_memory_usage_data(file_name):
     if file_name is None: return memory_usage
 
     try:
-        with open(file_name, 'rb') as usage_file:
+        with open(file_name, 'r') as usage_file:
             for line in csv.reader(usage_file, delimiter = ' '):
                 try:
                     address = Memory.read(line[0], 16)
@@ -363,9 +363,12 @@ def create_memory_labels(clusters, memory_usage = None, structures = None):
         if next_clusters: cluster = next_clusters.pop()
         else: cluster = next(clusters, None)
 
+    cluster = None
     next_cluster()
     while cluster is not None:
+        print(cluster)
         if children:
+            print('children')
             while children:
                 offset, child = children.popitem()
                 parents.append((parent, position, children))
@@ -391,6 +394,7 @@ def create_memory_labels(clusters, memory_usage = None, structures = None):
                     parentChoice.append(parent)
                 else: parent = Grouping(child.description(), parent = parent)
                 children = child.substructures
+            print('found children')
             if cluster.upper > position.upper:
                 parent.group(Interval(cluster.lower, position.upper))
                 cluster = Interval(position.upper, cluster.upper)
@@ -405,7 +409,7 @@ def create_memory_labels(clusters, memory_usage = None, structures = None):
                 if isinstance(parent, Choice): parentChoice.pop()
             continue
         if name is None and memory_usage:
-            position, name = memory_usage.popitem()
+            position, name = memory_usage.pop()
         if name is None or cluster.upper < position.lower:
             create_group(cluster)
             next_cluster()
@@ -422,7 +426,11 @@ def create_memory_labels(clusters, memory_usage = None, structures = None):
             children = child.substructures
             if isinstance(child, DataUnion):
                 parent = Choice(child.description(), group = cluster)
-                groups[cluster] = parentChoice = parent
+                groups[cluster] = parent
+                if not children:
+                    next_cluster()
+                else:
+                    parentChoice.append(parent)
             else:
                 parent = Grouping(child.description())
                 if not children:
@@ -486,6 +494,9 @@ def main():
 
         position_labels = print_status('create memory labels',
                                         create_memory_labels, clusters, memory_usage, structures)
+
+        for interval, group in position_labels.items():
+            print(interval, group)
 
     time_labels = {}
     symbol_table = None
