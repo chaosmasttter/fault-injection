@@ -39,15 +39,6 @@ class Result(object):
     USER_ERROR, \
     OTHER_ERROR = range(7)
 
-    bit = None
-    register = None
-    address = None
-    instruction_pointer = None
-    start_time = None
-    end_time = None
-    result_type = None
-    output = None
-
     def __init__(self, names):
         self.parsers = []
 
@@ -282,8 +273,8 @@ def create_time_labels(trace, symbol_table):
     return labels
 
 def parse_results(filename, data_class):
-    data = {}
-    trace = {}
+    data = SortedDict()
+    trace = SortedDict()
 
     with open(filename, 'r') as result_file:
         reader = csv.DictReader(result_file)
@@ -292,15 +283,15 @@ def parse_results(filename, data_class):
             result.parse(line)
             bit_position = data_class.bit_position(result)
 
-            if result.instruction_pointer is not None and result.end_time is not None:
-                trace[result.end_time - 1] = result.instruction_pointer
+            try: trace[result.end_time - 1] = result.instruction_pointer
+            except AttributeError: pass
 
-            if bit_position is not None \
-              and result.start_time is not None and result.end_time is not None:
-                if bit_position not in data: data[bit_position] = {}
+            try:
+                data.setdefault(bit_position, SortedDict())
                 data[bit_position][result.start_time - 1, result.end_time] = result.classify()
+            except AttributeError: pass
 
-    return data, trace.items()
+    return data, trace
 
 def create_register_labels():
     labels = {}

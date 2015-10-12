@@ -3,25 +3,38 @@ from sortedcontainers import SortedDict
 
 identifier = 0
 
-class Structure(namedtuple('Structure', ['name', 'size', 'substructures'])):
-    def __new__(self_class, name = '', size = None, substructures = None):
-        if not name:
+class Structure(object):
+    def __init__(self, size = None):
+        if isinstance(size, int): self.size = size
+
+    def description(self, specific_name = None, label = None):
+        descriptors = []
+        if specific_name is not None:
+            descriptors.append(specific_name)
+        if label is not None:
+            descriptors.append(label)
+        try: descriptors.append('(size = {:d})'.format(self.size))
+        except AttributeError: pass
+        return ' '.join(descriptors)
+
+class Data(Structure):
+    def __init__(self, size, name = '', substructures = None):
+        super().__init__(size)
+
+        try:
+            invalid_name = any(character not in ascii_letters + digits + '_' for character in name[1:])
+            invalid_name = invalid_name or name[0] not in ascii_letters
+        except TypeError, IndexError: invalid_name = True
+
+        if invalid_name:
             global identifier
             name = '#{:d}'.format(identifier)
             identifier += 1
-        if substructures is None: substructures = SortedDict()
-        return super(Structure, self_class).__new__(self_class, name, size, substructures)
+        if not isinstance(substructures, Substructure):
+            substructures = SortedDict()
 
-    def description(self, label = None):
-        descriptors = [self.name]
-        if label is not None:
-            descriptors.append(self.label)
-        if self.size is not None:
-            descriptors.append('(size = {:d})'.format(self.size))
-        return ' '.join(descriptors)
-
-    def inner_structure(self):
-        return self
+        self.name = name
+        self.substructures = substructures
 
 class DataEnumeration(Structure):
     def description(self, label = None):
@@ -103,7 +116,7 @@ def parse_structures_recursive(string):
         for segment in segments[1:]:
             sub = parse_structure(segment, depth + 1, substructure = True)
             substructures[sub.offset] = sub
-
+    
         fields = tuple(parse_fields(segments[0].strip()))
 
         if not substructure:
