@@ -328,12 +328,12 @@ def parse_structures(file_name):
 def generate_clusters(positions):
     if not positions: raise StopIteration
 
-    maximalDistance = 7
+    maximal_distance = 8
     
     lower = next(positions)
     upper = lower + 1
     for position in positions:
-        if position - upper > maximalDistance:
+        if position - upper >= maximal_distance:
             yield Interval(lower, upper)
             lower = position
             upper = lower + 1
@@ -342,99 +342,43 @@ def generate_clusters(positions):
 
 def create_memory_labels(clusters, memory_usage = None, structures = None):
     groups = SortedDict()
-    position = None
-    children = None
-    parents = []
-    parent = None
-    parentChoice = []
-    name = None
-    next_clusters = []
-
-    def create_group(interval):
+    
+    def create_group(interval, parent = None):
         labels = tuple(map(lambda value: Memory.show(value >> int(math.log2(Memory.bits))), interval))
-        groups[interval] = Grouping(*labels, group = interval)
+        groups[interval] = Grouping(*labels, parent, interval)
 
-    def next_cluster():
-        nonlocal cluster
-        if next_clusters: cluster = next_clusters.pop()
-        else: cluster = next(clusters, None)
-
-    next_cluster()
-    while cluster is not None:
-        if children:
-            while children:
-                offset, child = children.popitem()
-                parents.append((parent, position, children))
-                position = Interval(position.lower + offset * Memory.bits, child.size * Memory.bits, True)
-                if cluster.upper <= position.lower:
-                    create_group(cluster)
-                    parent, position, children = parents.pop()
-                    if isinstance(parent, Choice): parentChoice.pop()
-                    while not children and parents:
-                        parent, position, children = parents.pop()
-                        if isinstance(parent, Choice): parentChoice.pop()
-                    break
-                if cluster.lower < postion.lower:
-                    create_group(Interval(cluster.lower, position.lower))
-                    cluster = Inteval(position.lower, cluster.upper)
-                if allows_choice(child):
-                    if cluster.upper > position.upper:
-                        nextCluster.append(Interval(position.upper, cluster.upper))
-                        cluster = Interval(cluster.lower, position.upper)
-                    parent = Choice(child.description(), parent = parent, group = cluster)
-                    if parent_choice: parentChoice[-1].subgroupings[cluster] = parent
-                    groups[cluster] = parent
-                    parentChoice.append(parent)
-                else: parent = Grouping(child.description(), parent = parent)
-                children = child.inner_structure().substructures
-            if cluster.upper > position.upper:
-                parent.group(Interval(cluster.lower, position.upper))
-                cluster = Interval(position.upper, cluster.upper)
-            else:
-                parent.group(cluster)
-                cluster = next(clusters, None)
-            if parentChoice and parentChoice[-1] is not parent:
-                parentChoice.subgroupings[parent.group] = parent
-                next_cluster()                
-            while not children and parents:
-                parent, position, children = parents.pop()
-                if isinstance(parent, Choice): parentChoice.pop()
-            continue
-        if name is None and memory_usage:
-            position, name = memory_usage.pop()
-        if name is None or cluster.upper < position.lower:
+    cluster = next(clusters, None)
+    for position, name in memory_usage:
+        while cluster is not None and cluster.upper <= position.lower:
             create_group(cluster)
-            next_cluster()
-            continue
+            cluster = next(clusters, None)
+        if cluster is None: break
+
         if cluster.lower < position.lower:
             create_group(Interval(cluster.lower, position.lower))
             cluster = Interval(position.lower, cluster.upper)
-            continue
-        if cluster.upper > position.upper:
-            next_clusters.append(Interval(position.upper, cluster.upper))
-            cluster = Interval(cluster.lower, position.upper)
-        if name in structures:
-            child = structures[name]
-            children = child.inner_structure().substructures
-            if allows_choice(child):
-                parent = Choice(child.description(), group = cluster)
-                groups[cluster] = parent
-                if not children:
-                    next_cluster()
-                else:
-                    parentChoice.append(parent)
-            else:
-                parent = Grouping(child.description())
-                if not children:
-                    parent.group(cluster)
-                    groups[cluster] = parent
-                    next_cluster()
-            continue
-        groups[cluster] = Grouping(name, group = cluster)
-        name = None
-        next_cluster()
 
-    return groups
+        if name in structures:
+            structure = structures[name]
+            assert structure.presize.no_estimate_possible or structure.size == position.length
+            parent = Grouping(structure.description())
+            
+            if isinstance(structure, Data):
+                parents = []
+
+            else:
+                while cluster is not None and cluster.upper <= position.upper:
+                    create_group(cluster, parent)
+                    cluster = next(clusters, None)
+                if cluster.lower < position.upper:
+                    create_group(Interval(cluster.lower, position.upper), parent)
+                    cluster = Interval(position.upper, cluster.upper)
+
+     while cluster is not None:
+         create_group(cluster)
+         cluster = next(clusters, None)
+
+     return groups
 
 def parse_arguments():
     parser = ArgumentParser()

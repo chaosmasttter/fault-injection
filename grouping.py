@@ -1,9 +1,18 @@
 from collections import namedtuple
 
 class Interval(namedtuple('Interval', ['lower', 'upper'])):
-   def __new__(self_class, a, b, length_given = False):
-       if length_given: b += a
-       return super(Interval, self_class).__new__(self_class, a, b)
+    def __new__(self_class, a, b, length_given = False):
+        assert isinstance(a, int) and isinstance(b, int)
+        assert isinstance(length_given, bool)
+        assert length_given or a <= b
+
+        if length_given: b += a
+        return super(Interval, self_class).__new__(self_class, a, b)
+
+    @property
+    def length(self):
+        assert lower <= upper
+        return upper - lower
 
 class Grouping(namedtuple('Grouping', ['header', 'footer', 'parent'])):
     def __new__(self_class, header = '', footer = '', parent = None, *arguments, **keyword_arguments):
