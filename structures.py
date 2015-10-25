@@ -47,8 +47,13 @@ class SizeSelector(object):
 
 class Structure(object):
     def __init__(self, size = None):
-        if isinstance(size, int): self.presize = size
-        else: self.presize = SizeSelector()
+        if isinstance(size, int):
+            self.presize = size
+            self.size_known = True
+        else:
+            self.presize = SizeSelector()
+            self.size_known = False
+        self.known = False
 
     def description(self, label = None, specifiers = None):
         descriptors = []
@@ -71,38 +76,47 @@ class Structure(object):
 
     @property
     def size(self):
-        if isinstance(self.presize, SizeSelector): 
+        if not self.size_known:
+            assert isinstance(self.presize, SizeSelector)
             if self.presize.no_estimate_possible: raise AttributeError('size is unknown')
             self.presize = self.presize.size_estimate
+            self.size_known = True
         assert isinstance(self.presize, int)
         return self.presize
 
     @size.setter
     def size(self, size):
         assert isinstance(size, int)
-        if isinstance(self.presize, int): assert self.presize == size
-        self.presize = size
+        if not self.size_known: 
+            self.presize = size
+            self.size_known = True
+        else: assert self.presize == size
 
     def add_possible_size(self, size):
         assert isinstance(size, int)
-        if isinstance(self.presize, SizeSelector): self.presize.add_possible_size(size)
+        if not self.size_known:
+            assert isinstance(self.presize, SizeSelector)
+            self.presize.add_possible_size(size)
         else: assert size < self.size
 
     def remove_possible_sizes_above(self, limit):
         assert isinstance(limit, int)
-        if isinstance(self.presize, SizeSelector): self.presize.remove_possible_sizes_above(limit)
-        else: assert self.size > limit
+        if not self.size_known:
+            assert isinstance(self.presize, SizeSelector)
+            self.presize.remove_possible_sizes_above(limit)
+        else: assert self.size <= limit
 
     def remove_possible_sizes_below(self, limit):
         assert isinstance(limit, int)
-        if isinstance(self.presize, SizeSelector): self.presize.remove_possible_sizes_below(limit)
-        else: assert self.size < limit
+        if not self.size_known:
+            assert isinstance(self.presize, SizeSelector)
+            self.presize.remove_possible_sizes_below(limit)
+        else: assert self.size >= limit
 
-    def same_as(self, other):
-        if not isinstance(other, Structure): return False
-        if isinstance(self.presize, int) and isinstance(other.presize, int):
-            if self.size != other.size: return False
-        return True
+    def same(self, other):
+        if self is other: return True
+        if type(self) is not type(other): return False
+        if self.size_known and other.size_known and self.size != other.size: return False
 
 void = Structure(0)
 
@@ -110,7 +124,9 @@ class Data(Structure):
     def __init__(self, name = '', substructures = None, size = None):
         super().__init__(size)
 
-        try: invalid_name = name[0] not in ascii_letters or any(character not in ascii_letters + digits + '_' for character in name[1:])
+        real_name = name.partition('<')[0] + name.rpartition('>')[2]
+        try: invalid_name = name[0] not in ascii_letters or any(
+               character not in ascii_letters + digits + '_ ' for character in real_name[1:])
         except (TypeError, IndexError): invalid_name = True
 
         if invalid_name:
@@ -140,9 +156,10 @@ class Data(Structure):
         assert isinstance(substructure, Substructure)
 
         assert substructure.offset not in self.substructures
-        if isinstance(substructure.presize, int):
+        if substructure.size_known:
+            assert isinstance(substructure.presize, int)
             try: assert self.substructures.keys()[self.substructures.bisect(substructure.offset)] >= substructure.offset + substructure.size
-            except IndexError: assert self.size >= substructure.offset + substructure.size
+            except IndexError: assert not self.size_known or self.size >= substructure.offset + substructure.size
 
         self.substructures[substructure.offset] = substructure
 
@@ -155,9 +172,9 @@ class Data(Structure):
         if self.substructures:
             substructures = reversed(self.substructures.values())
 
-            substructure = next(substructures)
-            last_done = self.annotate_size_of_last_substructure(substructure)
-            upper_bound = substructure.offset
+            last_substructure = next(substructures)
+            last_done = self.annotate_size_of_last_substructure(last_substructure)
+            upper_bound = last_substructure.offset
 
             for substructure in substructures:
                 possible_size = upper_bound - substructure.offset
@@ -165,36 +182,39 @@ class Data(Structure):
                 substructure.add_possible_size(possible_size)
                 upper_bound = substructure.offset
 
-        self.annotate_size = self.annotate_size_of_last_substructure
+        self.annotate_size = lambda: self.annotate_size_of_last_substructure(last_substructure)
 
     def annotate_size_of_last_substructure(self, substructure):
         assert isinstance(substructure, Substructure)
 
-        if isinstance(substructure.presize, int):
+        if substructure.size_known:
+            assert isinstance(substructure.presize, int)
             self.remove_possible_sizes_below(substructure.offset + substructure.size)
-        elif isinstance(self.presize, int):
+        elif self.size_known:
+            assert isinstance(self.presize, int)
             possible_size = self.size - substructure.offset
             substructure.remove_possible_sizes_above(possible_size)
             substructure.add_possible_size(possible_size)
         else: return
         self.annotate_size = self.annotate_size_of_last_substructure = lambda: None
 
-    def same_as(self, other):
-        if type(self) is not type(other): return False
-        if isinstance(self.presize, int) and isinstance(other.presize, int):
-            if self.size != other.size: return False
+    def same(self, other):
+        if self is other: return True
+        if type(self) == Array or type(other) == Array and type(self) != type(other): return False
+        if not isinstance(other, type(self)) and not isinstance(self, type(other)): return False
         if self.full_name == other.full_name: return True
+        if type(self) is not type(other) and self.name == other.name: return True
         if '#' not in self.name and '#' not in other.name: return False
+        if self.size_known and other.size_known and self.size != other.size: return False
         if len(self.substructures) != len(other.substructures): return False
+        if type(self) is not type(other) and len(self.substructures) == 0: return False
 
-        try:
-            self_substructures = self.substructures.values()
-            other_substructures = other.substructures.values()
-        except AttributeError:
-            self_substructures = self.substructures
-            other_substructures = other.substructures
+        try: self_substructures = self.substructures.values()
+        except AttributeError: self_substructures = self.substructures
+        try: other_substructures = other.substructures.values()
+        except AttributeError: other_substructures = other.substructures
 
-        return all(self_substructure.same_as(other_substructure)
+        return all(self_substructure.same(other_substructure)
                    for self_substructure, other_substructure
                    in zip(self_substructures, other_substructures))
 
@@ -224,7 +244,8 @@ class DataUnion(Data):
         self.substructures.append(substructure)
 
     def annotate_size(self):
-        if isinstance(self.presize, int):
+        if self.size_known:
+            assert isinstance(self.presize, int)
             for substructure in self.substructures:
                 substructure.remove_possible_sizes_above(self.size)
                 substructure.add_possible_size(self.size)
@@ -233,7 +254,8 @@ class DataUnion(Data):
         else:
             biggest_size = 0
             for substructure in self.substurctures:
-                if isinstance(substructure.presize, int):
+                if substructure.size_known:
+                    assert isinstance(substructure.presize, int)
                     biggest_size = max(substructure.size, biggest_size)
                 else:
                     biggest_size = None
@@ -253,14 +275,24 @@ class Array(Data):
         else: self.count = 0
         if isinstance(size, int): self.cell.size = size // self.count
         self.extra_name = '[{:d}]'.format(self.count)
-        self.name = self.cell.description()
+        self.name = self.cell.description() + self.extra_name
 
     def description(self, label = None, specifiers = None):
         descriptors = []
-        assert isinstance(specifiers, str)
-        if specifiers is not None: descriptors.append(specifiers)
+        if specifiers is not None:
+            assert isinstance(specifiers, str)
+            descriptors.append(specifiers)
         descriptors.append(self.cell.description(label))
         return ' '.join(descriptors) + self.extra_name
+
+    @property
+    def size_known(self):
+        return self.cell.structure.size_known
+
+    @size_known.setter
+    def size_known(self, boolean):
+        assert isinstance(boolean, bool)
+        self.cell.structure.size_known = boolean
 
     @property
     def presize(self):
@@ -286,15 +318,14 @@ class Array(Data):
     def annotate_size(self): pass
     def annotate_size_of_last_substructure(self, substructure): pass
 
-    def same_as(self, other):
-        if type(self) is not type(other): return False
-        if isinstance(self.presize, int) and isinstance(other.presize, int):
-            if self.size != other.size: return False
-        if self.count != other.count: return False
-        return self.cell.same_as(other.cell)
+    def same(self, other):
+        same = Structure.same(self, other)
+        if same is not None: return same
+        return self.count == other.count and self.cell.same(other.cell)
 
 class Pointer(Structure):
     pointer_size = SizeSelector()
+    pointer_size_known = False
 
     def __init__(self, destination = None, size = None):
         if isinstance(size, int): self.size = size
@@ -309,16 +340,27 @@ class Pointer(Structure):
         return ' '.join(descriptors)
 
     @property
+    def size_known(self):
+        return type(self).pointer_size_known
+
+    @size_known.setter
+    def size_known(self, boolean):
+        assert isinstance(boolean, bool)
+        type(self).pointer_size_known = boolean
+
+    @property
     def presize(self):
         return type(self).pointer_size
 
     @presize.setter
     def presize(self, size):
+        assert isinstance(size, int)
         type(self).pointer_size = size
 
-    def same_as(self, other):
-        if type(self) is not type(other): return False
-        return self.destination.same_as(other.destination)
+    def same(self, other):
+        same = Structure.same(self, other)
+        if same is not None: return same
+        return self.destination.same(other.destination)
 
 class Function(Structure):
     def __init__(self, return_type = None, argument_types = None, size = None):
@@ -351,10 +393,11 @@ class Function(Structure):
         assert isinstance(argument_type, SpecificStructure)
         self.argument_types.append(argument_type)
 
-    def same_as(self, other):
-        if type(self) is not type(other): return False
-        if not self.return_type.same_as(other.return_type): return False
-        return all(self_argument_type.same_as(other_argument_type)
+    def same(self, other):
+        same = Structure.same(self, other)
+        if same is not None: return same
+        if not self.return_type.same(other.return_type): return False
+        return all(self_argument_type.same(other_argument_type)
                    for self_argument_type, other_argument_type
                    in zip(self.argument_types, other.argument_types))
 
@@ -371,10 +414,10 @@ class SpecificStructure(namedtuple('SpecificStructure', ['structure', 'constant'
         if specifiers: return self.structure.description(label, ' '.join(specifiers))
         return self.structure.description(label)
 
-    def same_as(self, other):
+    def same(self, other):
         if type(self) is not type(other): return False
         if self[1:] is not other[1:]: return False
-        return self.structure.same_as(other.strurcture)
+        return self.structure.same(other.strurcture)
 
 class Substructure(namedtuple('Substructure', ['structure', 'label', 'offset'])):
     def __new__(self_class, structure, label = '', offset = 0):
@@ -382,6 +425,10 @@ class Substructure(namedtuple('Substructure', ['structure', 'label', 'offset']))
         if not isinstance(offset, int): offset = 0
         if not isinstance(structure, SpecificStructure): raise TypeError()
         return super().__new__(self_class, structure, label, offset)
+
+    @property
+    def size_known(self):
+        return self.structure.structure.size_known
 
     @property
     def presize(self):
@@ -404,48 +451,45 @@ class Substructure(namedtuple('Substructure', ['structure', 'label', 'offset']))
     def remove_possible_sizes_below(self, limit):
         self.structure.structure.remove_possible_sizes_below(limit)
 
-    def same_as(self, other):
+    def same(self, other):
         if type(self) is not type(other): return False
         if self[1:] is not other[1:]: return False
-        return self.structure.same_as(other.sturcture)
+        return self.structure.same(other.sturcture)
 
 def parse_structures_recursive(string):
     if string is None: return {}
     separators = ';&$%?#@'
     data_structures = {}
-    structures = []
     functions = []
     pointers = []
 
-    lines = string.strip().split('\n')
+    def lookup_data_structure(structure):
+        assert isinstance(structure, Data)
+        if structure.name in data_structures:
+            lookup_structure = data_structures[structure.name]
+            assert structure.same(lookup_structure)
+            return lookup_structure
 
-    def lookup_structure(structure):
-        if isinstance(structure, Data):
-            if structure.full_name in data_structures:
-                lookup_structure = data_structures[structure.full_name]
-                assert structure.same_as(lookup_structure)
-                return lookup_structure
-
-            if '#' in structure.name:
-                for data_structure in data_structures.values():
-                    if structure.same_as(data_structure): return data_structure
-
-            return None
-
-        if isinstance(structure, Pointer):
-            for pointer in pointers:
-                if structure.same_as(pointer): return pointer
-            return None
-
-        if isinstance(function, Function):
-            for function in functions:
-                if structure.same_as(function): return function
-            return None
-
+    def lookup_structure(structure, structure_list):
         assert isinstance(structure, Structure)
-        for other_structure in structures:
-            if structure.same_as(other_structure): return other_structure
-        return None
+        for other_structure in structure_list:
+            if structure.same(other_structure):
+                return other_structure
+
+    def update_structure(structure, other_structure):
+        assert isinstance(structure, Data)
+        assert structure.same(other_structure)
+        if '#' in structure.name and '#' not in other_structure.name:
+            structure.name = other_structure.name
+        if not isinstance(structure, type(other_structure)):
+            assert isinstance(other_structure, type(structure))
+            new_structure = type(other_structure)(structure.name)
+            new_structure.substructures = structure.substructures
+            new_structure.presize = structure.presize
+            new_structure.size_known = structure.size_known
+            data_structures[new_structure.name] = new_structure
+            return new_structure
+        return structure
 
     def parse_fields(fields):
         imbalance = { '<>' : 0, '()' : 0 }
@@ -485,7 +529,7 @@ def parse_structures_recursive(string):
 
         return True, (partitions[0].strip() + ' ' + partitions[2].strip()).strip()
 
-    def parse_specific_pointer(pointer_partition, structure):
+    def parse_specific_pointer(pointer_partition, structure, known):
         while pointer_partition[1]:
             pointer_partition = pointer_partition[2].partition('*')
             constant, keywords = parse_keyword(pointer_partition[0], 'const')
@@ -493,11 +537,13 @@ def parse_structures_recursive(string):
             assert not keywords
 
             pointer = Pointer(structure)
-            lookup = lookup_structure(pointer)
-            if lookup is None: pointers.append(pointer)
-            else: pointer = lookup
+            lookup = lookup_structure(pointer, pointers)
+            if not lookup:
+                pointers.append(pointer)
+                known = False
+            else: pointer, known = lookup, True
             structure = SpecificStructure(pointer, constant, volatile)
-        return structure
+        return structure, known
 
     def parse_specific_structure(field):
         if field == 'void': return SpecificStructure(void)
@@ -524,14 +570,20 @@ def parse_structures_recursive(string):
             structure = DataClass(name)
         else: assert False
 
-        lookup = lookup_structure(structure)
+        lookup = lookup_data_structure(structure)
+        if not lookup:
+            data_structures[structure.name] = structure
+            known = lookup
+        else:
+            lookup = update_structure(lookup, structure)
+            structure, known = lookup, True
 
         structure = SpecificStructure(structure, constant, volatile)
-        return parse_specific_pointer(pointer_partition, structure)
+        return parse_specific_pointer(pointer_partition, structure, known)
 
     def parse_general_structure(field):
         function_partition = field.partition('()')
-        structure = parse_specific_structure(function_partition[0])
+        structure, known = parse_specific_structure(function_partition[0])
 
         if function_partition[1]:
             return_type, constant, volatile = structure
@@ -546,39 +598,56 @@ def parse_structures_recursive(string):
             arguments = parse_fields(function_partition[0])
             for argument in arguments:
                 if argument == 'void': break
-                function.add_argument_type(parse_general_structure(argument))
+                function.add_argument_type(parse_general_structure(argument)[0])
+
+            lookup = lookup_structure(function, functions)
+            if not lookup:
+                functions.append(function)
+                known = False
+            else: function, known = lookup, True
 
             pointer_partition = function_partition[2].strip().partition('*')
             assert not pointer_partition[0] and pointer_partition[1]
-            return parse_specific_pointer(pointer_partition, function)
+            return parse_specific_pointer(pointer_partition, function, known)
 
-        return structure
+        return structure, known
 
     def parse_structure(line, depth = 0, substructure = False):
         try: segments = line.strip().split(separators[depth])
         except IndexError: segments = [line.strip()]
 
-        print(segments)
-
         fields = tuple(parse_fields(segments[0]))
 
         if not substructure: 
             structure = Data(fields[0])
-
-            for segment in segments[1:]:
-                structure.add_substructure(parse_structure(segment, depth + 1, True))
+            lookup = lookup_data_structure(structure)
+            if not lookup:
+                for segment in segments[1:]:
+                    structure.add_substructure(parse_structure(segment, depth + 1, True))
+                    lookup = lookup_structure(structure, data_structures.values())
+                    if lookup: lookup = update_structure(lookup, structure)
+            if lookup: structure = lookup
+            else: data_structures[structure.name] = structure
 
             try: structure.size = int(fields[1])
             except (IndexError, ValueError): pass
 
-            return structure
+            return
 
-        structure = parse_general_structure(fields[0])
+        structure, known = parse_general_structure(fields[0])
 
-        try:
-            for segment in segments[1:]:
-                structure.structure.add_substructure(parse_structure(segment, depth + 1, True))
-        except AttributeError: assert False
+        if not known:
+            try:
+                for segment in segments[1:]:
+                    structure.structure.add_substructure(parse_structure(segment, depth + 1, True))
+            except AttributeError: assert False
+
+            if isinstance(structure.structure, Data):
+                lookup = lookup_structure(structure.structure, data_structures.values())
+                if lookup: lookup = update_structure(lookup, structure.structure)
+
+                if known or lookup: structure = SpecificStructure(lookup, *structure[1:])
+                else: data_structures[structure.structure.name] = structure.structure
 
         try:
             label = fields[1]
@@ -590,8 +659,14 @@ def parse_structures_recursive(string):
                 array_partition = array_partition[2].partition(']')
                 assert array_partition[1] and not array_partition[2]
 
-                try: structure = SpecificStructure(Array(structure, int(array_partition[0])))
-                except ValueError: structure = SpecificStructure(Array(structure))
+                try: count = int(array_partition[0])
+                except ValueError: count = 0
+
+                array = Array(structure, count)
+                lookup = lookup_data_structure(array)
+                if not lookup: data_structures[array.full_name] = array
+
+                structure = SpecificStructure(array)
         except IndexError: label = None
 
         try: structure.structure.size = int(fields[3])
@@ -601,8 +676,8 @@ def parse_structures_recursive(string):
         except (IndexError, ValueError):
             return Substructure(structure, label)
 
-    for line in lines:
-        structure = parse_structure(line)
-        structures[structure.name] = structure
+    lines = string.strip().split('\n')
+    for line in lines: parse_structure(line)
 
-    return structures
+    for structure in data_structures.values(): structure.annotate_size()
+    return data_structures
