@@ -358,6 +358,7 @@ def create_memory_labels(clusters, memory_usage = None, structures = None):
                         groups = SortedDict()
                         create_structure_labels(substructure, position, parent)
                         
+                        
                 for offset, 
 
             else:
