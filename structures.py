@@ -241,6 +241,7 @@ class DataUnion(Data):
 
     def add_substructure(self, substructure):
         assert isinstance(substructure, Substructure)
+        assert not substructure.offset
         self.substructures.append(substructure)
 
     def annotate_size(self):
@@ -254,6 +255,7 @@ class DataUnion(Data):
         else:
             biggest_size = 0
             for substructure in self.substurctures:
+                assert not substructure.offset
                 if substructure.size_known:
                     assert isinstance(substructure.presize, int)
                     biggest_size = max(substructure.size, biggest_size)
@@ -315,6 +317,7 @@ class Array(Data):
         return substructures
 
     def add_substructure(self, substructure): pass
+
     def annotate_size(self): pass
     def annotate_size_of_last_substructure(self, substructure): pass
 

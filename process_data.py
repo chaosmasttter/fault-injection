@@ -347,6 +347,27 @@ def create_memory_labels(clusters, memory_usage = None, structures = None):
         labels = tuple(map(lambda value: Memory.show(value >> int(math.log2(Memory.bits))), interval))
         groups[interval] = Grouping(*labels, parent, interval)
 
+    def create_structure_labels(structure, position, parent = None):
+            assert structure.presize.no_estimate_possible or structure.size == position.length
+            parent = Grouping(structure.description())
+
+            if isinstance(structure, Data):
+                if isinstance(structure, DataUnion):
+                    supergroups = groups
+                    for substructure in structure.substructures:
+                        groups = SortedDict()
+                        create_structure_labels(substructure, position, parent)
+                        
+                for offset, 
+
+            else:
+                while cluster is not None and cluster.upper <= position.upper:
+                    create_group(cluster, parent)
+                    cluster = next(clusters, None)
+                if cluster.lower < position.upper:
+                    create_group(Interval(cluster.lower, position.upper), parent)
+                    cluster = Interval(position.upper, cluster.upper)
+
     cluster = next(clusters, None)
     for position, name in memory_usage:
         while cluster is not None and cluster.upper <= position.lower:
@@ -359,20 +380,7 @@ def create_memory_labels(clusters, memory_usage = None, structures = None):
             cluster = Interval(position.lower, cluster.upper)
 
         if name in structures:
-            structure = structures[name]
-            assert structure.presize.no_estimate_possible or structure.size == position.length
-            parent = Grouping(structure.description())
-            
-            if isinstance(structure, Data):
-                parents = []
-
-            else:
-                while cluster is not None and cluster.upper <= position.upper:
-                    create_group(cluster, parent)
-                    cluster = next(clusters, None)
-                if cluster.lower < position.upper:
-                    create_group(Interval(cluster.lower, position.upper), parent)
-                    cluster = Interval(position.upper, cluster.upper)
+            create_structure_labels(structures[name], position)
 
      while cluster is not None:
          create_group(cluster)
