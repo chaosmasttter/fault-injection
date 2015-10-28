@@ -345,29 +345,60 @@ def create_memory_labels(clusters, memory_usage = None, structures = None):
     
     def create_group(interval, parent = None):
         labels = tuple(map(lambda value: Memory.show(value >> int(math.log2(Memory.bits))), interval))
-        groups[interval] = Grouping(*labels, parent, interval)
+        groups[interval] = Grouping(*labels, parent)
 
-    def create_structure_labels(structure, position, parent = None):
-            assert structure.presize.no_estimate_possible or structure.size == position.length
-            parent = Grouping(structure.description())
+    def create_structure_labels(structure, position, cluster, parent = None):
+        assert structure.presize.no_estimate_possible or structure.size == position.length
+        parent = Grouping(structure.description(), parent = parent)
 
-            if isinstance(structure, Data):
-                if isinstance(structure, DataUnion):
-                    supergroups = groups
-                    for substructure in structure.substructures:
-                        groups = SortedDict()
-                        create_structure_labels(substructure, position, parent)
-                        
-                        
-                for offset, 
+        if isinstance(structure, Data):
+            if isinstance(structure, DataUnion):
+                parent = Choice(*parent)
+                nonlocal clusters, groups
+                original_cluster = cluster
+                supergroups = groups
+                cluster_list = []
 
-            else:
                 while cluster is not None and cluster.upper <= position.upper:
                     create_group(cluster, parent)
+                    cluster_list.append(cluster)
                     cluster = next(clusters, None)
                 if cluster.lower < position.upper:
-                    create_group(Interval(cluster.lower, position.upper), parent)
+                    interval = Interval(cluster.lower, position.upper)
+                    create_group(interval, parent)
+                    cluster_list.append(interval)
                     cluster = Interval(position.upper, cluster.upper)
+
+                parent.add_subgroup(groups)
+                supergroups.update(groups)
+                remaining_clusters = clusters
+
+                for substructure in structure.substructures:
+                    clusters = iter(cluster_list)
+                    groups = SortedDict()
+                    create_structure_labels(substructure, position, original_cluster, parent)
+                    parent.add_subgroup(groups)
+
+                groups = supergroups
+                return cluster
+
+            parent_position = position
+            for offset, substructure in structure.substructures:
+                assert offset = substructure.offset
+                lower = parent_position.lower + substructure.offset
+                upper = lower + substructure.size
+                position = Interval(lower, upper)
+                while cluster 
+            
+            return cluster
+
+        while cluster is not None and cluster.upper <= position.upper:
+            create_group(cluster, parent)
+            cluster = next(clusters, None)
+        if cluster.lower < position.upper:
+            create_group(Interval(cluster.lower, position.upper), parent)
+            cluster = Interval(position.upper, cluster.upper)
+        return cluster
 
     cluster = next(clusters, None)
     for position, name in memory_usage:

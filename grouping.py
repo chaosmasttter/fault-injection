@@ -20,21 +20,16 @@ class Grouping(namedtuple('Grouping', ['header', 'footer', 'parent'])):
         self.initialise(*arguments, **keyword_arguments)
         return self
 
-    def initialise(self, group = None):
-        self.group(group)
-
-    def group(self, group):
-        if isinstance(group, Interval): self.group = group
+    def initialise(self): pass
 
 class Choice(Grouping):
-    def initialise(self, group, subgroupings = {}):
-        super(Choice, self).initialise(group)
+    def initialise(self, subgroups = []):
         self.subgroupings = subgroupings
-        self.choice = None
+        self.choice = 0
 
-    def choices(self):
-        return self.subgroupings.keys()
+    def add_subgroup(self, subgroup):
+        self.subgroups.append(subgroup)
 
-    def choose(self, key):
-        self.choice = key
-        return self.subgroupings[key]
+    def choose(self, index):
+        self.choice = index
+        return self.subgroupings[index]
