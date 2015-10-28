@@ -13,7 +13,7 @@ from tkinter import Tk
 from sortedcontainers import SortedDict
 
 from graphicalInterface import Visualisation
-from structures import parse_structures_recursive, allows_choice
+from structures import parse_structures_recursive
 from grouping import Interval, Grouping, Choice
 
 class Result(object):
@@ -345,7 +345,7 @@ def create_memory_labels(clusters, memory_usage = None, structures = None):
     
     def create_group(interval, parent = None):
         labels = tuple(map(lambda value: Memory.show(value >> int(math.log2(Memory.bits))), interval))
-        groups[interval] = Grouping(*labels, parent)
+        groups[interval] = Grouping(*labels, parent = parent)
 
     def create_structure_labels(structure, position, cluster, parent = None):
         assert structure.presize.no_estimate_possible or structure.size == position.length
@@ -363,7 +363,7 @@ def create_memory_labels(clusters, memory_usage = None, structures = None):
                     create_group(cluster, parent)
                     cluster_list.append(cluster)
                     cluster = next(clusters, None)
-                if cluster.lower < position.upper:
+                if cluster is not None and cluster.lower < position.upper:
                     interval = Interval(cluster.lower, position.upper)
                     create_group(interval, parent)
                     cluster_list.append(interval)
@@ -384,17 +384,24 @@ def create_memory_labels(clusters, memory_usage = None, structures = None):
 
             parent_position = position
             for offset, substructure in structure.substructures:
-                assert offset = substructure.offset
+                assert offset == substructure.offset
                 lower = parent_position.lower + substructure.offset
                 upper = lower + substructure.size
                 position = Interval(lower, upper)
-                while cluster 
-            
-            return cluster
+                while cluster is not None and cluster.upper <= position.lower:
+                    create_group(cluster, parent)
+                    cluster = next(clusters, None)
+                if cluster is None: return cluster
+                if cluster.lower < position.lower:
+                    create_group(Interval(cluster.lower, position.lower))
+                    cluster = Interval(position.lower, cluster.upper)
+                cluster = creat_structure_labels(substructure.structure.structure, position, cluster, parent)
+            position = parent_position
 
         while cluster is not None and cluster.upper <= position.upper:
             create_group(cluster, parent)
             cluster = next(clusters, None)
+        if cluster is None: return cluster
         if cluster.lower < position.upper:
             create_group(Interval(cluster.lower, position.upper), parent)
             cluster = Interval(position.upper, cluster.upper)
@@ -412,13 +419,13 @@ def create_memory_labels(clusters, memory_usage = None, structures = None):
             cluster = Interval(position.lower, cluster.upper)
 
         if name in structures:
-            create_structure_labels(structures[name], position)
+            cluster = create_structure_labels(structures[name], position, cluster)
 
-     while cluster is not None:
-         create_group(cluster)
-         cluster = next(clusters, None)
+    while cluster is not None:
+        create_group(cluster)
+        cluster = next(clusters, None)
 
-     return groups
+    return groups
 
 def parse_arguments():
     parser = ArgumentParser()
@@ -465,9 +472,6 @@ def main():
 
         structures = print_status('parse data structures',
                                   parse_structures, arguments.data_structures)
-
-        for name, structure in structures.items():
-            print(name, structure)
 
         clusters = print_status('generate clusters',
                                 generate_clusters, iter(sorted(data.keys())))
