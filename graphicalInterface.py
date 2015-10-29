@@ -5,7 +5,7 @@ from canvasvg import SVGdocument, convert
 
 class Visualisation(object):
     def __init__(self, parent, data, coloring,
-                 explanation, timeLabels, positionGroups,
+                 explanation, time_labels, position_groups,
                  mirror = True):
 
         style = themed.Style()
@@ -15,63 +15,71 @@ class Visualisation(object):
         self.data = data
         self.coloring = coloring
         self.explanation = explanation
+        self.time_labels = time_labels
 
-        self.currentZoom = 1.0
-        self.minimalZoom = 1.0
-        self.maximalZoom = 10.0
+        self.current_zoom = 1.0
+        self.minimal_zoom = 1.0
+        self.maximal_zoom = 10.0
 
         # the frame containing all widgets needed for the visualisation
         self.mainframe = themed.Frame(parent, padding = 5)
 
-        self.content        = Canvas(self.mainframe)
-        self.timeLabels     = Canvas(self.mainframe)
-        self.positionLabels = Canvas(self.mainframe)
-        self.legend         = Canvas(self.mainframe)
+        self.content         = Canvas(self.mainframe)
+        self.time_labels     = Canvas(self.mainframe)
+        self.position_labels = Canvas(self.mainframe)
+        self.legend          = Canvas(self.mainframe)
 
-        self.locationLabel = themed.Label(self.mainframe)
+        self.location_label = themed.Label(self.mainframe)
 
         # set the background color of the canvases
         # to match that of the themed widgets
-        self.backgroundColor = style.lookup('.', 'background')
-        for canvas in \
-          self.content, self.timeLabels, self.positionLabels, self.legend:
-            canvas['background'] = self.backgroundColor
+        self.background_color = style.lookup('.', 'background')
+        for canvas in self.content, self.time_labels, self.position_labels, self.legend:
+            canvas['background'] = self.background_color
             canvas['highlightthickness'] = 0
 
-        self.content.noManaging = False
+        self.content.no_managing = False
 
-        defaultText = self.timeLabels.create_text(0, 0, anchor = 'n')
-        self.timeLabels.defaultTextSize = self.timeLabels.bbox(defaultText)[3]
-        self.timeLabels.delete(defaultText)
+        default_text = self.time_labels.create_text(0, 0, anchor = 'n')
+        self.time_labels.default_text_size = self.time_labels.bbox(default_text)[3]
+        self.time_labels.delete(default_text)
 
-        self.plot(timeLabels, positionGroups, None, mirror)
+        self.plot(time_labels, position_groups, None, mirror)
 
-        self.scrollHorizontal = themed.Scrollbar(self.mainframe, orient = HORIZONTAL)
-        self.scrollVertical   = themed.Scrollbar(self.mainframe, orient = VERTICAL)
+        self.scroll_horizontal = themed.Scrollbar(self.mainframe, orient = HORIZONTAL)
+        self.scroll_vertical   = themed.Scrollbar(self.mainframe, orient = VERTICAL)
+
+        def scroll_all_horizontal(self, *arguments):
+            for canvas in [self.content, self.time_labels]:
+                canvas.xview(*arguments)
+
+        def scroll_all_vertical(self, *arguments):
+            for canvas in [self.content, self.positionLabels]:
+                canvas.yview(*arguments)
+
+        def bind_scroll_command(scroll_event, scroll_function, direction):
+            self.mainframe.bind_all(scroll_event, lambda _: self.force
+                                    (scrollFunction, 'scroll', direction, 'units'))
 
         # set the right callbacks for the scrollbars
-        for canvas in [self.content, self.timeLabels]:
-            canvas['xscrollcommand'] = self.scrollHorizontal.set
+        for canvas in [self.content, self.time_labels]:
+            canvas['xscrollcommand'] = self.scroll_horizontal.set
 
-        for canvas in [self.content, self.positionLabels]:
-            canvas['yscrollcommand'] = self.scrollVertical.set
+        for canvas in [self.content, self.position_labels]:
+            canvas['yscrollcommand'] = self.scroll_vertical.set
 
-        self.scrollHorizontal['command'] = self.scrollAllHorizontal
-        self.scrollVertical  ['command'] = self.scrollAllVertical
-
-        def bindScrollCommand(scrollEvent, scrollFunction, direction):
-            self.mainframe.bind_all(scrollEvent, lambda _: self.force
-                                    (scrollFunction, 'scroll', direction, 'units'))
+        self.scroll_horizontal['command'] = self.scroll_all_horizontal
+        self.scroll_vertical  ['command'] = self.scroll_all_vertical
 
         self.mainframe.event_add('<<ScrollUp>>',    '<Up>',    '<Button-4>')
         self.mainframe.event_add('<<ScrollDown>>',  '<Down>',  '<Button-5>')
         self.mainframe.event_add('<<ScrollLeft>>',  '<Left>',  '<Shift-Button-4>')
         self.mainframe.event_add('<<ScrollRight>>', '<Right>', '<Shift-Button-5>')
 
-        bindScrollCommand('<<ScrollUp>>',    self.scrollAllVertical,   - 1)
-        bindScrollCommand('<<ScrollDown>>',  self.scrollAllVertical,   + 1)
-        bindScrollCommand('<<ScrollLeft>>',  self.scrollAllHorizontal, - 1)
-        bindScrollCommand('<<ScrollRight>>', self.scrollAllHorizontal, + 1)
+        bind_scroll_command('<<ScrollUp>>',    self.scroll_all_vertical,   - 1)
+        bind_scroll_command('<<ScrollDown>>',  self.scroll_all_vertical,   + 1)
+        bind_scroll_command('<<ScrollLeft>>',  self.scroll_all_horizontal, - 1)
+        bind_scroll_command('<<ScrollRight>>', self.scroll_all_horizontal, + 1)
 
         self.content.event_add('<<ZoomIn>>',  '+', '<Control-Button-4>')
         self.content.event_add('<<ZoomOut>>', '-', '<Control-Button-5>')
@@ -79,42 +87,34 @@ class Visualisation(object):
         self.content.bind('<<ZoomIn>>',  lambda event: self.zoom(1.1, event)) 
         self.content.bind('<<ZoomOut>>', lambda event: self.zoom(0.9, event))
 
-        self.legend .bind('<Configure>', self.plotLegend)
-        self.content.bind('<Configure>', self.manageContent)
+        self.legend .bind('<Configure>', self.plot_legend)
+        self.content.bind('<Configure>', self.manage_content)
 
         self.content.bind('<Enter>', lambda _: self.content  .focus_set())
         self.content.bind('<Leave>', lambda _: self.mainframe.focus_set())
 
-        self.mainframe.bind_all('p', lambda _: self.saveScreenshot())
+        self.mainframe.bind_all('s', lambda _: self.save_screenshot())
 
         # place everything on the screen
-        self.timeLabels      .grid(column = 1, row = 0, sticky = 'nsew')
-        self.positionLabels  .grid(column = 0, row = 1, sticky = 'nsew')
-        self.content         .grid(column = 1, row = 1, sticky = 'nsew')
-        self.scrollVertical  .grid(column = 2, row = 1, sticky = 'nsew')
-        self.scrollHorizontal.grid(column = 1, row = 2, sticky = 'nsew')
-        self.legend          .grid(column = 1, row = 3, sticky = 'nsew')
-        self.locationLabel   .grid(column = 1, row = 4, sticky = 'nsew')
+        self.time_labels      .grid(column = 1, row = 0, sticky = 'nsew')
+        self.position_labels  .grid(column = 0, row = 1, sticky = 'nsew')
+        self.content          .grid(column = 1, row = 1, sticky = 'nsew')
+        self.scroll_vertical  .grid(column = 2, row = 1, sticky = 'nsew')
+        self.scroll_horizontal.grid(column = 1, row = 2, sticky = 'nsew')
+        self.legend           .grid(column = 1, row = 3, sticky = 'nsew')
+        self.location_label   .grid(column = 1, row = 4, sticky = 'nsew')
 
         self.mainframe.columnconfigure(1, weight = 1)
         self.mainframe.rowconfigure(   1, weight = 1)
-
-    def scrollAllHorizontal(self, *arguments):
-        for canvas in [self.content, self.timeLabels]:
-            canvas.xview(*arguments)
-
-    def scrollAllVertical(self, *arguments):
-        for canvas in [self.content, self.positionLabels]:
-            canvas.yview(*arguments)
 
     def force(self, function = None, *arguments):
         if callable(function): function(*arguments)
         self.mainframe.update_idletasks()
 
-    def saveScreenshot(self):
+    def save_screenshot(self):
         document = SVGdocument()
 
-        def setViewBox(graphic, width, height, x, y, X = None, Y = None):
+        def set_view_box(graphic, width, height, x, y, X = None, Y = None):
             if X is None: X = width
             else: X -= x
             if Y is None: Y = height
@@ -125,7 +125,7 @@ class Visualisation(object):
             graphic.setAttribute('viewBox', "%0.3f %0.3f %0.3f %0.3f" % (x, y, X, Y))
             return graphic
 
-        def createGraphic(canvas):
+        def create_graphic(canvas):
             graphic = document.createElement('svg')
 
             width  = canvas.winfo_width()
@@ -136,7 +136,7 @@ class Visualisation(object):
             X = canvas.canvasx(width)
             Y = canvas.canvasy(height)
 
-            setViewBox(graphic, width, height, x, y, X, Y)
+            set_view_box(graphic, width, height, x, y, X, Y)
 
             for element in convert(document, canvas, canvas.find_overlapping(x, y, X, Y)):
                 graphic.appendChild(element)
@@ -145,27 +145,27 @@ class Visualisation(object):
 
             return graphic, width, height
 
-        contentWidth, contentHeight = createGraphic(self.content)[1:]
+        content_width, content_height = create_graphic(self.content)[1:]
 
-        timeLabelsGraphic, _, timeLabelsHeight = createGraphic(self.timeLabels)
-        timeLabelsGraphic.setAttribute('y', "-%0.3f" % timeLabelsHeight)
+        time_labels_graphic, _, time_labels_height = create_graphic(self.time_labels)
+        time_labels_graphic.setAttribute('y', "-%0.3f" % time_labels_height)
 
-        positionLabelsGraphic, positionLabelsWidth, _ = createGraphic(self.positionLabels)
-        positionLabelsGraphic.setAttribute('x', "-%0.3f" % positionLabelsWidth)
+        position_labels_graphic, position_labels_width, _ = create_graphic(self.position_labels)
+        position_labels_graphic.setAttribute('x', "-%0.3f" % position_labels_width)
 
-        contentHeight += 5
+        content_height += 5
 
-        legendGraphic, _, legendHeight = createGraphic(self.legend)
-        legendGraphic.setAttribute('y', "%0.3f" % contentHeight)
+        legend_graphic, _, legend_height = create_graphic(self.legend)
+        legend_graphic.setAttribute('y', "%0.3f" % content_height)
 
-        setViewBox(document.documentElement,
-                   positionLabelsWidth + contentWidth,
-                   timeLabelsHeight + contentHeight + legendHeight,
-                   - positionLabelsWidth, - timeLabelsHeight)
+        set_view_box(document.documentElement,
+                     position_labels_width + content_width,
+                     time_labels_height + content_height + legend_height,
+                     - position_labels_width, - time_labels_height)
 
         savefile = asksaveasfile(defaultextension = '.svg',
                                  initialfile = 'screenshot.svg',
-                                 title = 'Select file to store the screenshot.',
+                                 title = 'Select file to store the screenshot in.',
                                  parent = self.mainframe)
 
         if savefile:
@@ -178,11 +178,11 @@ class Visualisation(object):
         if scale < 1: self.content.bind('<<ZoomIn>>',  lambda event: self.zoom(1.1, event))
         if scale > 1: self.content.bind('<<ZoomOut>>', lambda event: self.zoom(0.9, event))
 
-        if scale * self.currentZoom > self.maximalZoom:
-            scale = self.maximalZoom / self.currentZoom
+        if scale * self.current_zoom > self.maximal_zoom:
+            scale = self.maximal_zoom / self.current_zoom
             self.content.unbind('<<ZoomIn>>')
-        if scale * self.currentZoom < self.minimalZoom:
-            scale = self.minimalZoom / self.currentZoom
+        if scale * self.current_zoom < self.minimal_zoom:
+            scale = self.minimal_zoom / self.current_zoom
             self.content.unbind('<<ZoomOut>>')
 
         self.currentZoom *= scale
@@ -191,165 +191,165 @@ class Visualisation(object):
         self.timeLabels    .scale('all', x, y, scale, 1,   )
         self.positionLabels.scale('all', x, y, 1,     scale)
 
-        self.manageContent()
+        self.manage_content()
 
-    def manageContent(self, event = None):
-        if self.content.noManaging:
-            self.content.noManaging = False
+    def manage_content(self, event = None):
+        if self.content.no_managing:
+            self.content.no_managing = False
             return
 
-        self.manageTimeLabels()
-        self.managePositionLabels()
-        self.setScrollRegions(self.drawingRegions())
+        self.manage_time_labels()
+        self.manage_position_labels()
+        self.set_scroll_regions(self.drawing_regions())
 
         if event is not None:
-            if int(self.timeLabels['height']) > event.height:
-                self.timeLabels['height'] = 0
-                self.content.noManaging = True
-            if int(self.positionLabels['width']) > event.width:
-                self.positionLabels['width'] = 0
-                self.content.noManaging = True
+            if int(self.time_labels['height']) > event.height:
+                self.time_labels['height'] = 0
+                self.content.no_managing = True
+            if int(self.position_labels['width']) > event.width:
+                self.position_labels['width'] = 0
+                self.content.no_managing = True
 
-            self.minimalZoom = min(float(event.width)  / self.content.width,
-                                   float(event.height) / self.content.height)
+            self.minimal_zoom = min(float(event.width)  / self.content.width,
+                                    float(event.height) / self.content.height)
 
-    def manageTimeLabels(self, event = None):
-        self.timeLabels.delete('line')
-        self.timeLabels.itemconfigure('all', state = 'normal')
+    def manage_time_labels(self, event = None):
+        self.time_labels.delete('line')
+        self.time_labels.itemconfigure('all', state = 'normal')
 
-        textSize = self.timeLabels.defaultTextSize
+        text_size = self.time_labels.default_text_ize
 
         offset = {}
         lineStart = []
 
-        maxX, maxY = None, None
+        max_x, max_y = None, None
 
-        for label in self.timeLabels.find_all():
-            lowerX, lowerY, upperX, upperY = self.timeLabels.bbox(label)
+        for label in self.time_labels.find_all():
+            lower_x lower_y, upper_x, upper_y = self.time_labels.bbox(label)
 
             line = 0
-            while line in offset and lowerX < offset[line] + textSize: line += 1
+            while line in offset and lower_x < offset[line] + text_size: line += 1
 
-            distance = line * textSize - lowerY
-            self.timeLabels.move(label, 0, distance)
-            offset[line] = upperX
-            lineStart.append((label, lowerX + 1, upperY + distance ))
+            distance = line * text_size - lower_yn
+            self.time_labels.move(label, 0, distance)
+            offset[line] = upper_x
+            line_start.append((label, lower_x + 1, upper_y + distance ))
 
-            maxX = max(upperX, maxX)
-            maxY = max(upperY, maxY)
+            max_x = max(upper_x, max_x)
+            max_y = max(upper_y, max_y)
 
-        if maxY is not None:
-            height = maxY + textSize
-            for label, x, y in lineStart:
-                line = self.timeLabels.create_line(x, y, x, height, tags = 'line', fill = 'lightgrey')
-                self.timeLabels.lines[label] = self.timeLabels.lines[label][0], (line, True)
-            self.timeLabels.tag_lower('line')
+        if max_y is not None:
+            height = max_y + text_size
+            for label, x, y in line_start:
+                line = self.time_labels.create_line(x, y, x, height, tags = 'line', fill = 'lightgrey')
+                self.time_labels.lines[label] = self.time_labels.lines[label][0], (line, True)
+            self.time_labels.tag_lower('line')
 
-    def managePositionLabels(self, event = None):
-        self.positionLabels.itemconfigure('label', state = 'hidden')
+    def manage_position_labels(self, event = None):
+        self.position_labels.itemconfigure('label', state = 'hidden')
 
-        structure = self.positionLabels.structure[:]
+        structure = self.position_labels.structure[:]
         superstructure = []
 
-        oldLowerBound = oldUpperBound = None
-        lowerBound = upperBound = None
+        old_lower_bound = old_upper_bound = None
+        lower_bound = upper_bound = None
         while structure or superstructure:
             while structure:
-                (lowerLabel, lowerFree, lowerText), (upperLabel, upperFree, upperText), substructure = structure.pop()
+                (lower_label, lower_free, lower_text), (upper_label, upper_free, upper_text), substructure = structure.pop()
 
-                self.positionLabels.itemconfigure(lowerLabel, state = 'normal')
-                _, lower, _, upper = self.positionLabels.bbox(lowerLabel)
-                if lowerText:
-                    if lowerFree:
-                        self.positionLabels.move(lowerLabel, 0, lowerBound - lower)
-                        lowerBound += upper - lower
-                    else: lowerBound = upper
-                elif not lowerFree: lowerBound = lower
+                self.position_labels.itemconfigure(lower_label, state = 'normal')
+                _, lower, _, upper = self.position_labels.bbox(lower_label)
+                if lower_text:
+                    if lower_free:
+                        self.position_labels.move(lower_label, 0, lower_bound - lower)
+                        lower_bound += upper - lower
+                    else: lower_bound = upper
+                elif not lower_free: lower_bound = lower
 
-                self.positionLabels.itemconfigure(upperLabel, state = 'normal')
-                _, lower, _, upper = self.positionLabels.bbox(upperLabel)
-                if upperText:
-                    if upperFree:
-                        self.positionLabels.move(upperLabel, 0, upperBound - upper)
-                        upperBound += lower - upper
-                    else: upperBound = lower
-                elif not upperFree: upperBound = upper
+                self.positionLabels.itemconfigure(upper_label, state = 'normal')
+                _, lower, _, upper = self.position_labels.bbox(upper_label)
+                if upper_text:
+                    if upper_free:
+                        self.position_labels.move(upper_label, 0, upper_bound - upper)
+                        upper_bound += lower - upper
+                    else: upper_bound = lower
+                elif not upper_free: upper_bound = upper
 
-                if lowerBound < upperBound:
-                    superstructure.append((oldLowerBound, oldUpperBound, structure))
+                if lower_bound < upper_bound:
+                    superstructure.append((old_lower_bound, old_upper_bound, structure))
                     structure = substructure[:]
-                    oldLowerBound = lowerBound
-                    oldUpperBound = upperBound
+                    old_lower_bound = lower_bound
+                    old_upper_bound = upper_bound
 
                 else:
-                    self.positionLabels.itemconfigure(lowerLabel, state = 'hidden')
-                    self.positionLabels.itemconfigure(upperLabel, state = 'hidden')
+                    self.position_labels.itemconfigure(lower_label, state = 'hidden')
+                    self.position_labels.itemconfigure(upper_label, state = 'hidden')
 
             if superstructure:
-                oldLowerBound, oldUpperBound, structure = superstructure.pop()
-                lowerBound = oldLowerBound
-                upperBound = oldUpperBound
+                old_lower_bound, old_upper_bound, structure = superstructure.pop()
+                lower_bound = old_lower_bound
+                upper_bound = old_upper_bound
 
-    def plot(self, timeLabels, positions, locationInformation, mirror = True):
-        self.timeLabels.lines = {}
-        self.positionLabels.lines = {}
+    def plot(self, time_labels, positions, location_information, mirror = True):
+        self.time_labels.lines = {}
+        self.position_labels.lines = {}
 
-        verticalLines = {}
-        horizontalLines = {}
+        vertical_lines = {}
+        horizontal_lines = {}
 
-        unitPoint = self.content.create_rectangle(1, 1, 1, 1, width = 0, state = 'hidden')
+        unit_point = self.content.create_rectangle(1, 1, 1, 1, width = 0, state = 'hidden')
 
-        def showLocation(correction, event):
+        def show_location(correction, event):
             x = self.content.canvasx(event.x) / self.content.coords(unitPoint)[0] - correction[0]
             y = self.content.canvasx(event.y) / self.content.coords(unitPoint)[1] - correction[1]
 
-            self.locationLabel['text'] = locationInformation(x,y)
+            self.locationLabel['text'] = location_information(x,y)
     
-        def showLines(label, canvas):
-            for line, onCanvas in canvas.lines[label]:
-                if onCanvas:
-                    lineCanvas = canvas
+        def show_lines(label, canvas):
+            for line, on_canvas in canvas.lines[label]:
+                if on_canvas:
+                    line_canvas = canvas
                 else:
-                    lineCanvas = self.content
-                lineCanvas.tag_raise(line)
-                lineCanvas.itemconfigure(line, fill = 'black')
+                    line_canvas = self.content
+                line_canvas.tag_raise(line)
+                line_canvas.itemconfigure(line, fill = 'black')
 
-        def hideLines(label, canvas):
-            for line, onCanvas in canvas.lines[label]:
-                if onCanvas:
-                    lineCanvas = canvas
+        def hide_lines(label, canvas):
+            for line, on_canvas in canvas.lines[label]:
+                if on_canvas:
+                    line_canvas = canvas
                 else:
-                    lineCanvas = self.content
-                lineCanvas.tag_lower(line)
-                lineCanvas.itemconfigure(line, fill = 'lightgrey')
+                    line_canvas = self.content
+                line_canvas.tag_lower(line)
+                line_canvas.itemconfigure(line, fill = 'lightgrey')
 
-        def createLabel(text, distance, aboveLine = None, indentation = 0):
+        def create_label(text, distance, above_line = None, indentation = 0):
             anchor = 'nw'
-            if aboveLine is None:
-                canvas = self.timeLabels
+            if above_line is None:
+                canvas = self.time_labels
                 position = distance, 0
             else:
-                canvas = self.positionLabels
+                canvas = self.position_labels
                 position = indentation, distance
-                if aboveLine: anchor = 'sw'
+                if above_line: anchor = 'sw'
 
             label = canvas.create_text(*position, text = text, tag = 'label', anchor = anchor)
             canvas.tag_bind(label, '<Enter>',
-                            lambda _, label = label: canvas.after_idle(showLines, label, canvas))
+                            lambda _, label = label: canvas.after_idle(show_lines, label, canvas))
             canvas.tag_bind(label, '<Leave>',
-                            lambda _, label = label: canvas.after_idle(hideLines, label, canvas))
+                            lambda _, label = label: canvas.after_idle(hide_lines, label, canvas))
 
-            if canvas is self.timeLabels:
-                verticalLines[label] = distance
+            if canvas is self.time_labels:
+                vertical_lines[label] = distance
             else:
-                horizontalLines[label] = distance, indentation
+                horizontal_lines[label] = distance, indentation
 
             return label
 
         tags = []
         offset = 0
         indentation = 0
-        changeOffset = False
+        change_offset = False
 
         parents = []
         superlabels = []
@@ -366,18 +366,18 @@ class Visualisation(object):
             while isinstance(positions, list):
                 if not positions: break
 
-                if changeOffset: offset += 20
-                changeOffset = False
+                if change_offset: offset += 20
+                change_offset = False
 
                 labels, subpositions = positions.pop()
-                lowerLabel, upperLabel = labels
-                if mirror: lowerLabel, upperLabel = upperLabel, lowerLabel
+                lower_label, upper_label = labels
+                if mirror: lower_label, upper_label = upper_label, lower_label
                 
-                label = createLabel(lowerLabel, offset, False, indentation)
-                superlabels.append([label, bool(lowerLabel)])
+                label = create_label(lower_label, offset, False, indentation)
+                superlabels.append([label, bool(lower_label)])
                 structures.append([])
                 
-                parents.append((upperLabel, positions))
+                parents.append((upper_label, positions))
                 positions = subpositions
                 indentation += 20
 
@@ -386,11 +386,11 @@ class Visualisation(object):
                 if lower > upper: lower, upper = upper, lower
 
                 if mirror:
-                    positionRange = range(upper - 1, lower - 1, - 1)
+                    position_range = range(upper - 1, lower - 1, - 1)
                 else:
-                    positionRange = range(lower, upper)
+                    position_range = range(lower, upper)
 
-                for position in positionRange:
+                for position in position_range:
                     try:
                         for time, value in self.data[position].items():
                             if mirror:
@@ -407,64 +407,64 @@ class Visualisation(object):
 
             if parents:
                 indentation -= 20
-                upperLabel, positions = parents.pop()
-                label = createLabel(upperLabel, offset, True, indentation)
+                upper_label, positions = parents.pop()
+                label = create_label(upper_label, offset, True, indentation)
 
                 substructure = structures.pop()
-                otherLabel, hasText = superlabels.pop()
+                other_label, has_text = superlabels.pop()
                 if substructure:
                     substructure[ 0][ 0][1] = True
                     substructure[-1][+1][1] = True
-                structures[-1].append([ [otherLabel, False, hasText]
-                                      , [label, False, bool(upperLabel)]
+                structures[-1].append([ [other_label, False, has_text]
+                                      , [label, False, bool(upper_label)]
                                       , substructure ])
-                changeOffset = True
+                change_offset = True
 
-        self.positionLabels.structure = structures[0]
+        self.position_labels.structure = structures[0]
 
-        for time, text in sorted(timeLabels):
-            createLabel(text, time)
+        for time, text in sorted(time_labels):
+            create_label(text, time)
 
-        drawingRegions = self.drawingRegions()
-        lowerX, upperX, lowerY, upperY, _, _, positionsLowerX, positionsUpperX = drawingRegions
+        drawing_regions = self.drawing_regions()
+        lower_x, upper_x, lower_y, upper_y, _, _, positions_lower_x, positions_upper_x = drawing_regions
 
-        for label, time in verticalLines.items():
-            self.timeLabels.lines[label] \
-                = (self.content.create_line(time, lowerY, time, upperY), False),
-            hideLines(label, self.timeLabels)
-        for label, (position, indentation) in horizontalLines.items():
-            self.positionLabels.lines[label] \
-                = (self.content.create_line(lowerX, position, upperX, position), False) \
-                , (self.positionLabels.create_line(positionsLowerX + indentation, position, positionsUpperX, position), True)
-            hideLines(label, self.positionLabels)
+        for label, time in vertical_lines.items():
+            self.time_labels.lines[label] \
+                = (self.content.create_line(time, lower_y, time, upper_y), False),
+            hide_lines(label, self.time_labels)
+        for label, (position, indentation) in horizontal_lines.items():
+            self.position_labels.lines[label] \
+                = (self.content.create_line(lower_x, position, upper_x, position), False) \
+                , (self.position_labels.create_line(positions_lower_x + indentation, position, positions_upper_x, position), True)
+            hide_lines(label, self.position_labels)
 
-        self.setScrollRegions(drawingRegions)
-        self.content.width  = upperX - lowerX
-        self.content.height = upperY - lowerY
+        self.set_scroll_regions(drawing_regions)
+        self.content.width  = upper_x - lower_x
+        self.content.height = upper_y - lower_y
 
-    def plotLegend(self, event):
+    def plot_legend(self, event):
         self.legend.delete('all')
 
-        def showContent(value, rectangle):
+        def show_content(value, rectangle):
             self.content.itemconfigure('value{:x}'.format(value), state = 'normal')
             self.legend.itemconfigure(rectangle, fill = self.coloring[value])
-            self.legend.tag_bind(rectangle, '<Button-1>', lambda _: hideContent(value, rectangle))
+            self.legend.tag_bind(rectangle, '<Button-1>', lambda _: hide_content(value, rectangle))
 
-        def hideContent(value, rectangle):
+        def hide_content(value, rectangle):
             self.content.itemconfigure('value{:x}'.format(value), state = 'hidden')
             self.legend.itemconfigure(rectangle, fill = self.backgroundColor)
-            self.legend.tag_bind(rectangle, '<Button-1>', lambda _: showContent(value, rectangle))
+            self.legend.tag_bind(rectangle, '<Button-1>', lambda _: show_content(value, rectangle))
 
         x, y = 0, 0
         yend = 0
 
-        for value, explanationText in self.explanation.items():
+        for value, explanation_text in self.explanation.items():
             rectangle = self.legend.create_rectangle(
                 x, y, x + 10, y + 10, fill = self.coloring[value])
             label = self.legend.create_text(
-                x + 15, y, text = explanationText, anchor = 'nw')
+                x + 15, y, text = explanation_text, anchor = 'nw')
 
-            self.legend.tag_bind(rectangle, '<Button-1>', lambda _, value = value, rectangle = rectangle: hideContent(value, rectangle))
+            self.legend.tag_bind(rectangle, '<Button-1>', lambda _, value = value, rectangle = rectangle: hide_content(value, rectangle))
 
             _, _, xend, yend = self.legend.bbox(label)
             yend = max(y + 15, yend)
@@ -483,52 +483,52 @@ class Visualisation(object):
 
         self.legend['height'] = yend
 
-    def setScrollRegions(self, drawingRegions):
-        lowerX, upperX, lowerY, upperY, \
-        timeLabelsLowerY, timeLabelsUpperY, \
-        positionLabelsLowerX, positionLabelsUpperX = drawingRegions
+    def set_scroll_regions(self, drawing_regions):
+        lower_x, upper_x, lower_y, upper_y, \
+        time_labels_lower_y, time_labels_upper_y, \
+        position_labels_lower_x, position_labels_upper_x = drawing_regions
         
-        self.content['scrollregion'] = lowerX, lowerY, upperX, upperY
+        self.content['scrollregion'] = lower_x, lower_y, upper_x, upper_y
 
-        self.timeLabels['scrollregion'] = lowerX, timeLabelsLowerY, \
-                                          upperX, timeLabelsUpperY
-        self.timeLabels['height'] = timeLabelsUpperY - timeLabelsLowerY
+        self.time_labels['scrollregion'] = lower_x, time_labels_lower_y, \
+                                           upper_x, time_labels_upper_y
+        self.time_labels['height'] = time_labels_upper_y - time_labels_lower_y
 
-        self.positionLabels['scrollregion'] = positionLabelsLowerX, lowerY, \
-                                              positionLabelsUpperX, upperY
-        self.positionLabels['width'] = positionLabelsUpperX - positionLabelsLowerX
+        self.position_labels['scrollregion'] = position_labels_lower_x, lower_y, \
+                                               position_labels_upper_x, upper_y
+        self.position_labels['width'] = position_labels_upper_x - position_labels_lower_x
 
-    def drawingRegions(self):
-        contentBox = self.content.bbox('all')
-        timeLabelsBox = self.timeLabels.bbox('all')
-        positionLabelsBox = self.positionLabels.bbox('all')
+    def drawing_regions(self):
+        content_box = self.content.bbox('all')
+        time_labels_box = self.time_labels.bbox('all')
+        position_labels_box = self.position_lbabels.bbox('all')
 
-        if contentBox is None:
-            if timeLabelsBox is None: timeLabelsBox = 0, 0, 0, 0
-            lowerX, timeLabelsLowerY, upperX, timeLabelsUpperY = timeLabelsBox
+        if content_box is None:
+            if time_labels_box is None: time_labels_box = 0, 0, 0, 0
+            lower_x, time_labels_lower_y, upper_x, time_labels_upper_y = time_labels_box
 
-            if positionLabelsBox is None: positionLabelsBox = 0, 0, 0, 0
-            positionLabelsLowerX, lowerY, positionLabelsUpperX, upperY = positionLabelsBox
+            if position_labels_box is None: position_labels_box = 0, 0, 0, 0
+            position_labels_lower_x, lower_y, position_labels_upper_x, upper_y = position_labels_box
 
         else:
-            if timeLabelsBox is None:
-                lowerX, upperX = contentBox[0], contentBox[2]
-                timeLabelsLowerY, timeLabelsUpperY = 0, 0
+            if time_labels_box is None:
+                lower_x, upper_x = content_box[0], content_box[2]
+                time_labels_lower_y, time_labels_upper_y = 0, 0
             else:
-                lowerX = min(contentBox[0], timeLabelsBox[0])
-                upperX = max(contentBox[2], timeLabelsBox[2])
-                timeLabelsLowerY = timeLabelsBox[1]
-                timeLabelsUpperY = timeLabelsBox[3]
+                lower_x = min(content_box[0], time_labels_box[0])
+                upper_x = max(content_box[2], time_labels_box[2])
+                time_labels_lower_y = time_labels_box[1]
+                time_labels_upper_y = time_labels_box[3]
 
-            if positionLabelsBox is None:
-                lowerY, upperY = contentBox[1], contentBox[3]
-                positionLabelsLowerX, positionLabelsUpperX = 0, 0
+            if position_labels_box is None:
+                lower_y, upper_y = content_box[1], content_box[3]
+                position_labels_lower_x, position_labels_upper_x = 0, 0
             else:
-                lowerY = min(contentBox[1], positionLabelsBox[1])
-                upperY = max(contentBox[3], positionLabelsBox[3])
-                positionLabelsLowerX = positionLabelsBox[0]
-                positionLabelsUpperX = positionLabelsBox[2]
+                lower_y = min(content_box[1], position_labels_box[1])
+                upper_y = max(content_box[3], position_labels_box[3])
+                position_labels_lower_x = position_labels_box[0]
+                position_labels_upper_x = position_labels_box[2]
 
-        return (lowerX, upperX, lowerY, upperY,
-                timeLabelsLowerY, timeLabelsUpperY,
-                positionLabelsLowerX, positionLabelsUpperX)
+        return (lower_x, upper_x, lower_y, upper_y,
+                time_labels_lower_y, time_labels_upper_y,
+                position_labels_lower_x, position_labels_upper_x)
