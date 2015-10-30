@@ -12,8 +12,8 @@ from tkinter import Tk
 
 from sortedcontainers import SortedDict
 
-from graphicalInterface import Visualisation
-from structures import parse_structures_recursive
+from graphical_interface import Visualisation
+from structures import parse_structures_recursive, Data, DataUnion
 from grouping import Interval, Grouping, Choice
 
 class Result(object):
@@ -193,10 +193,10 @@ def create_symbol_table(filename):
     The filename should correspond to an C++ object file.
     """
 
-    symbol_table = {}
+    symbol_table = SortedDict()
 
     # use '-C' to demangle C++ names
-    for line in check_output(['nm', '-C', filename]).strip().split('\n'):
+    for line in check_output(['nm', '-C', filename], universal_newlines = True).strip().split('\n'):
         values = line.split(' ', 2) # [ 'address', 'symbol type', 'symbol name' ]
 
         try:
@@ -218,7 +218,7 @@ def read_symbol_table(filename):
     containing the output of the 'nm' tool for an C++ object file.
     """
 
-    symbol_table = {}
+    symbol_table = SortedDict()
 
     try:
         with open(filename, 'rb') as symbol_file:
@@ -254,10 +254,10 @@ def create_time_labels(trace, symbol_table):
     labels = []
 
     # sorted list of all addresses in the symbol table
-    symbol_addresses = sorted(symbol_table)
+    symbol_addresses = list(symbol_table)
 
     last_symbol = None
-    for time, instruction_pointer in sorted(trace):
+    for time, instruction_pointer in trace.items():
         try:
             # the biggest address smaller or equal to the instruction pointer
             address = symbol_addresses[bisect(symbol_addresses, instruction_pointer) - 1]
@@ -316,7 +316,7 @@ def parse_memory_usage_data(file_name):
                 position = Interval(address * Memory.bits, size * Memory.bits, True)
                 memory_usage.append((position, name))
     except (IOError, TypeError): pass
-    return sorted(memory_usage, reverse = True)
+    return sorted(memory_usage)
 
 def parse_structures(file_name):
     try:
@@ -348,7 +348,7 @@ def create_memory_labels(clusters, memory_usage = None, structures = None):
         groups[interval] = Grouping(*labels, parent = parent)
 
     def create_structure_labels(structure, position, cluster, parent = None):
-        assert structure.presize.no_estimate_possible or structure.size == position.length
+        assert not structure.possible_size_known or structure.size * Memory.bits == position.length
         parent = Grouping(structure.description(), parent = parent)
 
         if isinstance(structure, Data):
@@ -373,7 +373,7 @@ def create_memory_labels(clusters, memory_usage = None, structures = None):
                 supergroups.update(groups)
                 remaining_clusters = clusters
 
-                for substructure in structure.substructures:
+                for substructure in structure.substructures.items():
                     clusters = iter(cluster_list)
                     groups = SortedDict()
                     create_structure_labels(substructure, position, original_cluster, parent)
@@ -383,10 +383,12 @@ def create_memory_labels(clusters, memory_usage = None, structures = None):
                 return cluster
 
             parent_position = position
-            for offset, substructure in structure.substructures:
+            for offset, substructure in structure.substructures.items():
                 assert offset == substructure.offset
-                lower = parent_position.lower + substructure.offset
-                upper = lower + substructure.size
+                lower = parent_position.lower + substructure.offset * Memory.bits
+                if not substructure.possible_size_known:
+                    substructure.add_possible_size(parent_position.upper - lower)
+                upper = lower + substructure.size * Memory.bits
                 position = Interval(lower, upper)
                 while cluster is not None and cluster.upper <= position.lower:
                     create_group(cluster, parent)
@@ -395,7 +397,7 @@ def create_memory_labels(clusters, memory_usage = None, structures = None):
                 if cluster.lower < position.lower:
                     create_group(Interval(cluster.lower, position.lower))
                     cluster = Interval(position.lower, cluster.upper)
-                cluster = creat_structure_labels(substructure.structure.structure, position, cluster, parent)
+                cluster = create_structure_labels(substructure.structure.structure, position, cluster, parent)
             position = parent_position
 
         while cluster is not None and cluster.upper <= position.upper:
@@ -418,8 +420,12 @@ def create_memory_labels(clusters, memory_usage = None, structures = None):
             create_group(Interval(cluster.lower, position.lower))
             cluster = Interval(position.lower, cluster.upper)
 
-        if name in structures:
-            cluster = create_structure_labels(structures[name], position, cluster)
+        if cluster.lower >= position.upper: continue
+
+        if name in structures: structure = structures[name]
+        else: structure = Data(name, size = position.length // Memory.bits)
+
+        cluster = create_structure_labels(structure, position, cluster)
 
     while cluster is not None:
         create_group(cluster)
@@ -464,23 +470,20 @@ def main():
                                         create_register_labels)
 
     else:
-        data, trace = print_status('parse memory test results',
-                                    parse_results, arguments.data, Memory)
-
         memory_usage = print_status('parse memory usage data',
                                      parse_memory_usage_data, arguments.memory_usage)
 
         structures = print_status('parse data structures',
-                                  parse_structures, arguments.data_structures)
+                                   parse_structures, arguments.data_structures)
+
+        data, trace = print_status('parse memory test results',
+                                    parse_results, arguments.data, Memory)
 
         clusters = print_status('generate clusters',
-                                generate_clusters, iter(sorted(data.keys())))
+                                 generate_clusters, iter(sorted(data.keys())))
 
         position_labels = print_status('create memory labels',
                                         create_memory_labels, clusters, memory_usage, structures)
-
-        for interval, group in position_labels.items():
-            print(interval, group)
 
     time_labels = {}
     symbol_table = None

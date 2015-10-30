@@ -11,8 +11,8 @@ class Interval(namedtuple('Interval', ['lower', 'upper'])):
 
     @property
     def length(self):
-        assert lower <= upper
-        return upper - lower
+        assert self.lower <= self.upper
+        return self.upper - self.lower
 
 class Grouping(namedtuple('Grouping', ['header', 'footer', 'parent'])):
     def __new__(self_class, header = '', footer = '', parent = None, *arguments, **keyword_arguments):

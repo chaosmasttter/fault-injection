@@ -6,7 +6,7 @@ identifier = 0
 
 class SizeSelector(object):
     def __init__(self, scale = 1, sizes = None):
-        if isinstance(scale, int): self.scale = scale
+        if isinstance(scale, int) and scale: self.scale = scale
         else: self.scale = 1
         if isinstance(sizes, Counter): self.sizes = sizes
         else: self.sizes = Counter()
@@ -92,12 +92,16 @@ class Structure(object):
             self.size_known = True
         else: assert self.presize == size
 
+    @property
+    def possible_size_known(self):
+        return self.size_known or not self.presize.no_estimate_possible
+
     def add_possible_size(self, size):
         assert isinstance(size, int)
         if not self.size_known:
             assert isinstance(self.presize, SizeSelector)
             self.presize.add_possible_size(size)
-        else: assert size < self.size
+        else: assert self.size <= size
 
     def remove_possible_sizes_above(self, limit):
         assert isinstance(limit, int)
@@ -182,7 +186,8 @@ class Data(Structure):
                 substructure.add_possible_size(possible_size)
                 upper_bound = substructure.offset
 
-        self.annotate_size = lambda: self.annotate_size_of_last_substructure(last_substructure)
+            self.annotate_size = lambda: self.annotate_size_of_last_substructure(last_substructure)
+        self.annotate_size = lambda: None
 
     def annotate_size_of_last_substructure(self, substructure):
         assert isinstance(substructure, Substructure)
@@ -434,6 +439,10 @@ class Substructure(namedtuple('Substructure', ['structure', 'label', 'offset']))
         return self.structure.structure.size_known
 
     @property
+    def possible_size_known(self):
+        return self.structure.structure.possible_size_known
+
+    @property
     def presize(self):
         return self.structure.structure.presize
 
@@ -441,12 +450,11 @@ class Substructure(namedtuple('Substructure', ['structure', 'label', 'offset']))
     def size(self):
         return self.structure.structure.size
 
-    @property
     def description(self):
         return self.structure.description(self.label)
 
     def add_possible_size(self, size):
-        self.structure.structure.add_possible_size
+        self.structure.structure.add_possible_size(size)
 
     def remove_possible_sizes_above(self, limit):
         self.structure.structure.remove_possible_sizes_above(limit)
