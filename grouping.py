@@ -20,7 +20,7 @@ class Grouping(namedtuple('Grouping', ['header', 'footer', 'parent'])):
         self.initialise(*arguments, **keyword_arguments)
         return self
 
-    def initialise(self): pass
+    def initialise(self): self.seen = False
 
 class Choice(Grouping):
     def initialise(self, subgroups = []):
