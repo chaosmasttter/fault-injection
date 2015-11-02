@@ -3,6 +3,8 @@ from tkinter.filedialog import asksaveasfile
 import tkinter.ttk as themed
 from canvasvg import SVGdocument, convert
 
+from grouping import Grouping, Interval
+
 class Visualisation(object):
     def __init__(self, parent, data, coloring,
                  explanation, time_labels, position_groups,
@@ -49,11 +51,11 @@ class Visualisation(object):
         self.scroll_horizontal = themed.Scrollbar(self.mainframe, orient = HORIZONTAL)
         self.scroll_vertical   = themed.Scrollbar(self.mainframe, orient = VERTICAL)
 
-        def scroll_all_horizontal(self, *arguments):
+        def scroll_all_horizontal(*arguments):
             for canvas in [self.content, self.time_labels]:
                 canvas.xview(*arguments)
 
-        def scroll_all_vertical(self, *arguments):
+        def scroll_all_vertical(*arguments):
             for canvas in [self.content, self.positionLabels]:
                 canvas.yview(*arguments)
 
@@ -68,18 +70,18 @@ class Visualisation(object):
         for canvas in [self.content, self.position_labels]:
             canvas['yscrollcommand'] = self.scroll_vertical.set
 
-        self.scroll_horizontal['command'] = self.scroll_all_horizontal
-        self.scroll_vertical  ['command'] = self.scroll_all_vertical
+        self.scroll_horizontal['command'] = scroll_all_horizontal
+        self.scroll_vertical  ['command'] = scroll_all_vertical
 
         self.mainframe.event_add('<<ScrollUp>>',    '<Up>',    '<Button-4>')
         self.mainframe.event_add('<<ScrollDown>>',  '<Down>',  '<Button-5>')
         self.mainframe.event_add('<<ScrollLeft>>',  '<Left>',  '<Shift-Button-4>')
         self.mainframe.event_add('<<ScrollRight>>', '<Right>', '<Shift-Button-5>')
 
-        bind_scroll_command('<<ScrollUp>>',    self.scroll_all_vertical,   - 1)
-        bind_scroll_command('<<ScrollDown>>',  self.scroll_all_vertical,   + 1)
-        bind_scroll_command('<<ScrollLeft>>',  self.scroll_all_horizontal, - 1)
-        bind_scroll_command('<<ScrollRight>>', self.scroll_all_horizontal, + 1)
+        bind_scroll_command('<<ScrollUp>>',    scroll_all_vertical,   - 1)
+        bind_scroll_command('<<ScrollDown>>',  scroll_all_vertical,   + 1)
+        bind_scroll_command('<<ScrollLeft>>',  scroll_all_horizontal, - 1)
+        bind_scroll_command('<<ScrollRight>>', scroll_all_horizontal, + 1)
 
         self.content.event_add('<<ZoomIn>>',  '+', '<Control-Button-4>')
         self.content.event_add('<<ZoomOut>>', '-', '<Control-Button-5>')
@@ -217,10 +219,10 @@ class Visualisation(object):
         self.time_labels.delete('line')
         self.time_labels.itemconfigure('all', state = 'normal')
 
-        text_size = self.time_labels.default_text_ize
+        text_size = self.time_labels.default_text_size
 
         offset = {}
-        lineStart = []
+        line_start = []
 
         max_x, max_y = None, None
 
@@ -230,10 +232,10 @@ class Visualisation(object):
             line = 0
             while line in offset and lower_x < offset[line] + text_size: line += 1
 
-            distance = line * text_size - lower_yn
+            distance = line * text_size - lower_y
             self.time_labels.move(label, 0, distance)
             offset[line] = upper_x
-            line_start.append((label, lower_x + 1, upper_y + distance ))
+            line_start.append((label, lower_x + 1, upper_y + distance))
 
             max_x = max(upper_x, max_x)
             max_y = max(upper_y, max_y)
@@ -400,7 +402,7 @@ class Visualisation(object):
         child_label = None
         while groups:
             grouping = groups.pop()
-            label = create_label(grouping.footer, offset, True, indentation
+            label = create_label(grouping.footer, offset, True, indentation)
             indentation -= 20
             if child_label is not None:
                 dependency[child_label] = label
@@ -561,7 +563,7 @@ class Visualisation(object):
     def drawing_regions(self):
         content_box = self.content.bbox('all')
         time_labels_box = self.time_labels.bbox('all')
-        position_labels_box = self.position_lbabels.bbox('all')
+        position_labels_box = self.position_labels.bbox('all')
 
         if content_box is None:
             if time_labels_box is None: time_labels_box = 0, 0, 0, 0
