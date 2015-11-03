@@ -56,12 +56,12 @@ class Visualisation(object):
                 canvas.xview(*arguments)
 
         def scroll_all_vertical(*arguments):
-            for canvas in [self.content, self.positionLabels]:
+            for canvas in [self.content, self.position_labels]:
                 canvas.yview(*arguments)
 
         def bind_scroll_command(scroll_event, scroll_function, direction):
             self.mainframe.bind_all(scroll_event, lambda _: self.force
-                                    (scrollFunction, 'scroll', direction, 'units'))
+                                    (scroll_function, 'scroll', direction, 'units'))
 
         # set the right callbacks for the scrollbars
         for canvas in [self.content, self.time_labels]:
@@ -187,11 +187,11 @@ class Visualisation(object):
             scale = self.minimal_zoom / self.current_zoom
             self.content.unbind('<<ZoomOut>>')
 
-        self.currentZoom *= scale
+        self.current_zoom *= scale
 
-        self.content       .scale('all', x, y, scale, scale)
-        self.timeLabels    .scale('all', x, y, scale, 1,   )
-        self.positionLabels.scale('all', x, y, 1,     scale)
+        self.content        .scale('all', x, y, scale, scale)
+        self.time_labels    .scale('all', x, y, scale, 1,   )
+        self.position_labels.scale('all', x, y, 1,     scale)
 
         self.manage_content()
 
@@ -224,7 +224,7 @@ class Visualisation(object):
         offset = {}
         line_start = []
 
-        max_x, max_y = None, None
+        height = None
 
         for label in self.time_labels.find_all():
             lower_x, lower_y, upper_x, upper_y = self.time_labels.bbox(label)
@@ -234,63 +234,78 @@ class Visualisation(object):
 
             distance = line * text_size - lower_y
             self.time_labels.move(label, 0, distance)
-            offset[line] = upper_x
             line_start.append((label, lower_x + 1, upper_y + distance))
+            offset[line] = upper_x
 
-            max_x = max(upper_x, max_x)
-            max_y = max(upper_y, max_y)
+            try: height = max(upper_y, height)
+            except TypeError: height = upper_y
 
-        if max_y is not None:
-            height = max_y + text_size
+        if height is not None:
+            height += text_size
             for label, x, y in line_start:
                 line = self.time_labels.create_line(x, y, x, height, tags = 'line', fill = 'lightgrey')
                 self.time_labels.lines[label] = self.time_labels.lines[label][0], (line, True)
             self.time_labels.tag_lower('line')
 
     def manage_position_labels(self, event = None):
-        self.position_labels.itemconfigure('label', state = 'hidden')
+        done = set()
+        dependency = self.position_labels.dependency
+        for label in self.position_labels.find_withtag('label'):
+            todo = []
+            while label in dependency and not dependency[label] in done:
+                todo.append(label)
+                label = dependency[label]
 
-        structure = self.position_labels.structure[:]
-        superstructure = []
-
-        old_lower_bound = old_upper_bound = None
-        lower_bound = upper_bound = None
-        while structure or superstructure:
-            while structure:
-                (lower_label, lower_free, lower_text), (upper_label, upper_free, upper_text), substructure = structure.pop()
-
-                self.position_labels.itemconfigure(lower_label, state = 'normal')
-                _, lower, _, upper = self.position_labels.bbox(lower_label)
-                if lower_text:
-                    if lower_free:
-                        self.position_labels.move(lower_label, 0, lower_bound - lower)
-                        lower_bound += upper - lower
-                    else: lower_bound = upper
-                elif not lower_free: lower_bound = lower
-
-                self.positionLabels.itemconfigure(upper_label, state = 'normal')
-                _, lower, _, upper = self.position_labels.bbox(upper_label)
-                if upper_text:
-                    if upper_free:
-                        self.position_labels.move(upper_label, 0, upper_bound - upper)
-                        upper_bound += lower - upper
-                    else: upper_bound = lower
-                elif not upper_free: upper_bound = upper
-
-                if lower_bound < upper_bound:
-                    superstructure.append((old_lower_bound, old_upper_bound, structure))
-                    structure = substructure[:]
-                    old_lower_bound = lower_bound
-                    old_upper_bound = upper_bound
-
-                else:
-                    self.position_labels.itemconfigure(lower_label, state = 'hidden')
-                    self.position_labels.itemconfigure(upper_label, state = 'hidden')
-
-            if superstructure:
-                old_lower_bound, old_upper_bound, structure = superstructure.pop()
-                lower_bound = old_lower_bound
-                upper_bound = old_upper_bound
+            if label in dependency:
+                other_lower_x, other_upper_x = self.position_labels.bbox(dependency[label])[::2]
+                lower_x, upper_x = self.position_labels.bbox(label)[::2]
+                
+                
+                
+    
+#         self.position_labels.itemconfigure('label', state = 'hidden')
+# 
+#         structure = self.position_labels.structure[:]
+#         superstructure = []
+# 
+#         old_lower_bound = old_upper_bound = None
+#         lower_bound = upper_bound = None
+#         while structure or superstructure:
+#             while structure:
+#                 (lower_label, lower_free, lower_text), (upper_label, upper_free, upper_text), substructure = structure.pop()
+# 
+#                 self.position_labels.itemconfigure(lower_label, state = 'normal')
+#                 _, lower, _, upper = self.position_labels.bbox(lower_label)
+#                 if lower_text:
+#                     if lower_free:
+#                         self.position_labels.move(lower_label, 0, lower_bound - lower)
+#                         lower_bound += upper - lower
+#                     else: lower_bound = upper
+#                 elif not lower_free: lower_bound = lower
+# 
+#                 self.positionLabels.itemconfigure(upper_label, state = 'normal')
+#                 _, lower, _, upper = self.position_labels.bbox(upper_label)
+#                 if upper_text:
+#                     if upper_free:
+#                         self.position_labels.move(upper_label, 0, upper_bound - upper)
+#                         upper_bound += lower - upper
+#                     else: upper_bound = lower
+#                 elif not upper_free: upper_bound = upper
+# 
+#                 if lower_bound < upper_bound:
+#                     superstructure.append((old_lower_bound, old_upper_bound, structure))
+#                     structure = substructure[:]
+#                     old_lower_bound = lower_bound
+#                     old_upper_bound = upper_bound
+# 
+#                 else:
+#                     self.position_labels.itemconfigure(lower_label, state = 'hidden')
+#                     self.position_labels.itemconfigure(upper_label, state = 'hidden')
+# 
+#             if superstructure:
+#                 old_lower_bound, old_upper_bound, structure = superstructure.pop()
+#                 lower_bound = old_lower_bound
+#                 upper_bound = old_upper_bound
 
     def plot(self, time_labels, position_groups, location_information, mirror = True):
         self.time_labels.lines = {}
@@ -408,6 +423,8 @@ class Visualisation(object):
                 dependency[child_label] = label
                 child_label = label
 
+        self.position_labels.dependency = dependency
+        self.position_labels.itemconfigure('all', state = 'normal')
 #         tags = []
 #         offset = 0
 #         indentation = 0
@@ -484,8 +501,7 @@ class Visualisation(object):
 # 
 #         self.position_labels.structure = structures[0]
 
-        for time, text in sorted(time_labels):
-            create_label(text, time)
+        for time, text in sorted(time_labels): create_label(text, time)
 
         drawing_regions = self.drawing_regions()
         lower_x, upper_x, lower_y, upper_y, _, _, positions_lower_x, positions_upper_x = drawing_regions
@@ -494,7 +510,8 @@ class Visualisation(object):
             self.time_labels.lines[label] \
                 = (self.content.create_line(time, lower_y, time, upper_y), False),
             hide_lines(label, self.time_labels)
-        for label, (position, indentation) in horizontal_lines.items():
+        for label, position in horizontal_lines.items():
+            position, indentation = position
             self.position_labels.lines[label] \
                 = (self.content.create_line(lower_x, position, upper_x, position), False) \
                 , (self.position_labels.create_line(positions_lower_x + indentation, position, positions_upper_x, position), True)
