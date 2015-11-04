@@ -250,19 +250,33 @@ class Visualisation(object):
     def manage_position_labels(self, event = None):
         done = set()
         dependency = self.position_labels.dependency
+
+        self.position_labels.itemconfigure('label', state = 'normal')
         for label in self.position_labels.find_withtag('label'):
             todo = []
-            while label in dependency and not dependency[label] in done:
+            while label in dependency and not dependency[label][0] in done:
+                done.add(label)
                 todo.append(label)
-                label = dependency[label]
+                label, below = dependency[label]
 
+            box = self.position_labels.bbox(label)
             if label in dependency:
-                other_lower_x, other_upper_x = self.position_labels.bbox(dependency[label])[::2]
-                lower_x, upper_x = self.position_labels.bbox(label)[::2]
-                
-                
-                
-    
+                if self.position_label.itemconfigure(dependency[label][0])['state'] == 'hidden': continue
+
+                other_label, below = dependency[label]
+                other_box = self.position_labels.bbox(other_label)
+
+                index, other_index = 3, 1
+                if below: other_index, index = index, other_index
+                distance = other_box[other_index] - box[index]
+
+                self.position_labels.move(label, 0, distance)
+                if self.position_labels.find_overlapping(box[0], box[1] + distance, box[2], box[3] + distance) != tuple(label):
+                    self.position_labels.itemconfigure(label, state = 'hidden')
+                    continue
+            elif not todo: continue
+            else: pass
+
 #         self.position_labels.itemconfigure('label', state = 'hidden')
 # 
 #         structure = self.position_labels.structure[:]
@@ -382,7 +396,7 @@ class Visualisation(object):
                 label = create_label(old_grouping.footer, offset, True, indentation)
                 indentation -= 20
                 if child_label is not None:
-                    dependency[child_label] = label
+                    dependency[child_label] = label, True
                     child_label = label
 
             offset += 10
@@ -394,7 +408,7 @@ class Visualisation(object):
                 groups.append(grouping)
                 indentation += 20
                 label = create_label(grouping.header, offset, False, indentation)
-                dependency[label] = parent_label
+                dependency[label] = parent_label, False
 
             lower, upper = interval
 
@@ -420,7 +434,7 @@ class Visualisation(object):
             label = create_label(grouping.footer, offset, True, indentation)
             indentation -= 20
             if child_label is not None:
-                dependency[child_label] = label
+                dependency[child_label] = label, False
                 child_label = label
 
         self.position_labels.dependency = dependency
@@ -517,6 +531,7 @@ class Visualisation(object):
                 , (self.position_labels.create_line(positions_lower_x + indentation, position, positions_upper_x, position), True)
             hide_lines(label, self.position_labels)
 
+        print(drawing_regions)
         self.set_scroll_regions(drawing_regions)
         self.content.width  = upper_x - lower_x
         self.content.height = upper_y - lower_y
