@@ -8,7 +8,7 @@ from grouping import Grouping, Interval
 class Visualisation(object):
     def __init__(self, parent, data, coloring,
                  explanation, time_labels, position_groups,
-                 mirror = True):
+                 mirror = False):
 
         style = themed.Style()
         style.configure('.', background = 'white')
@@ -259,23 +259,37 @@ class Visualisation(object):
                 todo.append(label)
                 label, below = dependency[label]
 
-            box = self.position_labels.bbox(label)
+            if not todo or label in dependency: continue
+
             if label in dependency:
-                if self.position_label.itemconfigure(dependency[label][0])['state'] == 'hidden': continue
+                parent_label, below = dependency[label]
+                if self.position_label.itemconfigure(parent_label)['state'] == 'hidden': continue
+            else:
+                parent_label = label
+                label = todo.pop()
 
-                other_label, below = dependency[label]
-                other_box = self.position_labels.bbox(other_label)
+            if below: index, parent_index = 3, 1
+            else: index, parent_index = 1, 3
 
-                index, other_index = 3, 1
-                if below: other_index, index = index, other_index
-                distance = other_box[other_index] - box[index]
+            box = self.position_labels.bbox(label)
+            parent_box = self.position_labels.bbox(parent_label)
 
+            distance = parent_box[parent_index] - box[index]
+            self.position_labels.move(label, 0, distance)
+            if self.position_labels.find_overlapping(box[0], box[1] + distance, box[2], box[3] + distance) != tuple([label]):
+                self.position_labels.itemconfigure(label, state = 'hidden')
+                continue
+
+            while todo:
+                parent_label, parent_box = label, box
+                label = todo.pop()
+                box = self.position_labels.bbox(label)
+
+                distance = parent_box[parent_index] - box[index]
                 self.position_labels.move(label, 0, distance)
                 if self.position_labels.find_overlapping(box[0], box[1] + distance, box[2], box[3] + distance) != tuple(label):
                     self.position_labels.itemconfigure(label, state = 'hidden')
-                    continue
-            elif not todo: continue
-            else: pass
+                    break
 
 #         self.position_labels.itemconfigure('label', state = 'hidden')
 # 
@@ -384,31 +398,41 @@ class Visualisation(object):
         for interval, grouping in position_groups.items():
             assert isinstance(grouping, Grouping)
             assert isinstance(interval, Interval)
+            grouping.seen = True
 
+            print(grouping)
             new_groups = []
             while grouping.parent and not grouping.parent.seen:
                 new_groups.append(grouping)
                 grouping = grouping.parent
+                grouping.seen = True
+                print(grouping)
+            print(new_groups)
 
             child_label = None
             while groups and groups[-1] is not grouping.parent:
                 old_grouping = groups.pop()
+                print(old_grouping)
                 label = create_label(old_grouping.footer, offset, True, indentation)
                 indentation -= 20
                 if child_label is not None:
                     dependency[child_label] = label, True
                     child_label = label
+            print(groups)
 
             offset += 10
+            indentation += 20
 
             parent_label = create_label(grouping.header, offset, False, indentation)
             groups.append(grouping)
             while new_groups:
+                print(grouping)
                 grouping = new_groups.pop()
                 groups.append(grouping)
                 indentation += 20
                 label = create_label(grouping.header, offset, False, indentation)
                 dependency[label] = parent_label, False
+            print(groups)
 
             lower, upper = interval
 
@@ -438,7 +462,6 @@ class Visualisation(object):
                 child_label = label
 
         self.position_labels.dependency = dependency
-        self.position_labels.itemconfigure('all', state = 'normal')
 #         tags = []
 #         offset = 0
 #         indentation = 0
@@ -531,7 +554,6 @@ class Visualisation(object):
                 , (self.position_labels.create_line(positions_lower_x + indentation, position, positions_upper_x, position), True)
             hide_lines(label, self.position_labels)
 
-        print(drawing_regions)
         self.set_scroll_regions(drawing_regions)
         self.content.width  = upper_x - lower_x
         self.content.height = upper_y - lower_y
