@@ -248,92 +248,40 @@ class Visualisation(object):
             self.time_labels.tag_lower('line')
 
     def manage_position_labels(self, event = None):
-        done = set()
         dependency = self.position_labels.dependency
+        labels = []
 
         self.position_labels.itemconfigure('label', state = 'normal')
-        for label in self.position_labels.find_withtag('label'):
+        for label, below in self.position_labels.labels.values():
             todo = []
-            while label in dependency and not dependency[label][0] in done:
-                done.add(label)
+            while label in dependency:
                 todo.append(label)
-                label, below = dependency[label]
-
-            if not todo or label in dependency: continue
-
-            if label in dependency:
-                parent_label, below = dependency[label]
-                if self.position_label.itemconfigure(parent_label)['state'] == 'hidden': continue
-            else:
-                parent_label = label
-                label = todo.pop()
-
-            if below: index, parent_index = 3, 1
-            else: index, parent_index = 1, 3
+                label = dependency[label]
 
             box = self.position_labels.bbox(label)
-            parent_box = self.position_labels.bbox(parent_label)
-
-            distance = parent_box[parent_index] - box[index]
-            self.position_labels.move(label, 0, distance)
-            if self.position_labels.find_overlapping(box[0], box[1] + distance, box[2], box[3] + distance) != tuple([label]):
-                self.position_labels.itemconfigure(label, state = 'hidden')
-                continue
+            label_list = [(label, box)]
+            if below: index, parent_index = 1, 3
+            else: index, parent_index = 3, 1
 
             while todo:
-                parent_label, parent_box = label, box
                 label = todo.pop()
+                parent_box = box
                 box = self.position_labels.bbox(label)
 
                 distance = parent_box[parent_index] - box[index]
                 self.position_labels.move(label, 0, distance)
-                if self.position_labels.find_overlapping(box[0], box[1] + distance, box[2], box[3] + distance) != tuple(label):
-                    self.position_labels.itemconfigure(label, state = 'hidden')
-                    break
 
-#         self.position_labels.itemconfigure('label', state = 'hidden')
-# 
-#         structure = self.position_labels.structure[:]
-#         superstructure = []
-# 
-#         old_lower_bound = old_upper_bound = None
-#         lower_bound = upper_bound = None
-#         while structure or superstructure:
-#             while structure:
-#                 (lower_label, lower_free, lower_text), (upper_label, upper_free, upper_text), substructure = structure.pop()
-# 
-#                 self.position_labels.itemconfigure(lower_label, state = 'normal')
-#                 _, lower, _, upper = self.position_labels.bbox(lower_label)
-#                 if lower_text:
-#                     if lower_free:
-#                         self.position_labels.move(lower_label, 0, lower_bound - lower)
-#                         lower_bound += upper - lower
-#                     else: lower_bound = upper
-#                 elif not lower_free: lower_bound = lower
-# 
-#                 self.positionLabels.itemconfigure(upper_label, state = 'normal')
-#                 _, lower, _, upper = self.position_labels.bbox(upper_label)
-#                 if upper_text:
-#                     if upper_free:
-#                         self.position_labels.move(upper_label, 0, upper_bound - upper)
-#                         upper_bound += lower - upper
-#                     else: upper_bound = lower
-#                 elif not upper_free: upper_bound = upper
-# 
-#                 if lower_bound < upper_bound:
-#                     superstructure.append((old_lower_bound, old_upper_bound, structure))
-#                     structure = substructure[:]
-#                     old_lower_bound = lower_bound
-#                     old_upper_bound = upper_bound
-# 
-#                 else:
-#                     self.position_labels.itemconfigure(lower_label, state = 'hidden')
-#                     self.position_labels.itemconfigure(upper_label, state = 'hidden')
-# 
-#             if superstructure:
-#                 old_lower_bound, old_upper_bound, structure = superstructure.pop()
-#                 lower_bound = old_lower_bound
-#                 upper_bound = old_upper_bound
+                label_list.append((label, (box[0], box[1] + distance + 1, box[2], box[3] + distance - 1)))
+            labels.append(label_list)
+
+        while labels:
+            hide = False
+            label_list = labels.pop()
+            for label, box in label_list:
+                if hide: self.position_labels.itemconfigure(label, state = 'hidden')
+                elif self.position_labels.find_overlapping(*box) != tuple([label]):
+                    self.position_labels.itemconfigure(label, state = 'hidden')
+                    hide = True
 
     def plot(self, time_labels, position_groups, location_information, mirror = True):
         self.time_labels.lines = {}
@@ -395,30 +343,27 @@ class Visualisation(object):
         indentation = 0
         groups = []
         dependency = {}
+        labels = {}
         for interval, grouping in position_groups.items():
             assert isinstance(grouping, Grouping)
             assert isinstance(interval, Interval)
             grouping.seen = True
 
-            print(grouping)
             new_groups = []
             while grouping.parent and not grouping.parent.seen:
                 new_groups.append(grouping)
                 grouping = grouping.parent
                 grouping.seen = True
-                print(grouping)
-            print(new_groups)
 
             child_label = None
             while groups and groups[-1] is not grouping.parent:
                 old_grouping = groups.pop()
-                print(old_grouping)
                 label = create_label(old_grouping.footer, offset, True, indentation)
                 indentation -= 20
                 if child_label is not None:
-                    dependency[child_label] = label, True
+                    dependency[child_label] = label
                     child_label = label
-            print(groups)
+                else: labels[offset] = label, False
 
             offset += 10
             indentation += 20
@@ -426,14 +371,14 @@ class Visualisation(object):
             parent_label = create_label(grouping.header, offset, False, indentation)
             groups.append(grouping)
             while new_groups:
-                print(grouping)
                 grouping = new_groups.pop()
                 groups.append(grouping)
                 indentation += 20
                 label = create_label(grouping.header, offset, False, indentation)
-                dependency[label] = parent_label, False
-            print(groups)
+                dependency[label] = parent_label
+                parent_label = label
 
+            labels[offset] = parent_label, True
             lower, upper = interval
 
             if mirror: position_range = range(upper - 1, lower - 1, - 1)
@@ -458,10 +403,12 @@ class Visualisation(object):
             label = create_label(grouping.footer, offset, True, indentation)
             indentation -= 20
             if child_label is not None:
-                dependency[child_label] = label, False
+                dependency[child_label] = label
                 child_label = label
+            else: labels[offset] = label, False
 
         self.position_labels.dependency = dependency
+        self.position_labels.labels = labels
 #         tags = []
 #         offset = 0
 #         indentation = 0
