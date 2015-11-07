@@ -249,39 +249,76 @@ class Visualisation(object):
 
     def manage_position_labels(self, event = None):
         dependency = self.position_labels.dependency
-        labels = []
 
-        self.position_labels.itemconfigure('label', state = 'normal')
-        for label, below in self.position_labels.labels.values():
-            todo = []
-            while label in dependency:
-                todo.append(label)
-                label = dependency[label]
+        self.position_labels.itemconfigure('label', state = 'normal', fill = 'black')
+        for lower_label, upper_label in self.position_labels.labels.values():
 
-            box = self.position_labels.bbox(label)
-            label_list = [(label, box)]
-            if below: index, parent_index = 1, 3
-            else: index, parent_index = 3, 1
+            lower_todo = []
+            while lower_label in dependency:
+                lower_todo.append(lower_label)
+                lower_label = dependency[lower_label]
 
-            while todo:
-                label = todo.pop()
-                parent_box = box
-                box = self.position_labels.bbox(label)
+            upper_todo = []
+            while upper_label in dependency:
+                upper_todo.append(upper_label)
+                upper_label = dependency[upper_label]
 
-                distance = parent_box[parent_index] - box[index]
-                self.position_labels.move(label, 0, distance)
+            lower_box = self.position_labels.bbox(lower_label)[1::2]
+            upper_box = self.position_labels.bbox(upper_label)[1::2]
 
-                label_list.append((label, (box[0], box[1] + distance + 1, box[2], box[3] + distance - 1)))
-            labels.append(label_list)
+            if lower_box[1] > upper_box[0]:
+                self.position_labels.itemconfigure(upper_label, state = 'hidden')
+                if lower_box[1] > upper_box[1]: self.position_labels.itemconfigure(lower_label, state = 'hidden')
+                for label in lower_todo: self.position_labels.itemconfigure(label, state = 'hidden')
+                for label in upper_todo: self.position_labels.itemconfigure(label, state = 'hidden')
+                lower_todo = upper_todo = []
 
-        while labels:
-            hide = False
-            label_list = labels.pop()
-            for label, box in label_list:
-                if hide: self.position_labels.itemconfigure(label, state = 'hidden')
-                elif self.position_labels.find_overlapping(*box) != tuple([label]):
-                    self.position_labels.itemconfigure(label, state = 'hidden')
-                    hide = True
+            lower_limit = lower_box[1]
+            upper_limit = upper_box[0]
+            while lower_todo and upper_todo:
+                lower_label = lower_todo.pop()
+                upper_label = upper_todo.pop()
+                lower_box = self.position_labels.bbox(lower_label)[1::2]
+                upper_box = self.position_labels.bbox(upper_label)[1::2]
+                lower_distance = lower_limit - lower_box[0]
+                upper_distance = upper_limit - upper_box[1]
+                self.position_labels.move(lower_label, 0, lower_distance)
+                self.positoin_labels.move(upper_label, 0, upper_distance)
+                lower_limit = lower_box[1] + lower_distance
+                upper_limit = upper_box[0] + upper_distance
+
+                if lower_limit > upper_limit:
+                    self.position_labels.itemconfigure(upper_label, state = 'hidden')
+                    if lower_limit > upper_box[1] + upper_distance:
+                        self.position_labels.itemconfigure(lower_label, state = 'hidden')
+                    for label in lower_todo: self.position_labels.itemconfigure(label, state = 'hidden')
+                    for label in upper_todo: self.position_labels.itemconfigure(label, state = 'hidden')
+                    lower_todo = upper_todo = []
+                    break
+
+            while lower_todo:
+                lower_label = lower_todo.pop()
+                lower_box = self.position_labels.bbox(lower_label)[1::2]
+                lower_distance = lower_limit - lower_box[0]
+                self.position_labels.move(lower_label, 0, lower_distance)
+                lower_limit = lower_box[1] + lower_distance
+
+                if lower_limit > upper_limit:
+                    self.position_labels.itemconfigure(lower_label, state = 'hidden')
+                    for label in lower_todo: self.position_labels.itemconfigure(label, state = 'hidden')
+                    break
+
+            while upper_todo:
+                upper_label = upper_todo.pop()
+                upper_box = self.position_labels.bbox(upper_label)[1::2]
+                upper_distance = upper_limit - upper_box[1]
+                self.positoin_labels.move(upper_label, 0, upper_distance)
+                upper_limit = upper_box[0] + upper_distance
+
+                if upper_limit < lower_limit:
+                    self.position_labels.itemconfigure(lower_label, state = 'hidden')
+                    for label in upper_todo: self.position_labels.itemconfigure(label, state = 'hidden')
+                    break
 
     def plot(self, time_labels, position_groups, location_information, mirror = True):
         self.time_labels.lines = {}
@@ -344,7 +381,11 @@ class Visualisation(object):
         groups = []
         dependency = {}
         labels = {}
-        for interval, grouping in position_groups.items():
+        last_label, last_offset = None, None
+
+        items = position_groups.items()
+        if mirror: reversed(items)
+        for interval, grouping in items:
             assert isinstance(grouping, Grouping)
             assert isinstance(interval, Interval)
             grouping.seen = True
@@ -358,12 +399,15 @@ class Visualisation(object):
             child_label = None
             while groups and groups[-1] is not grouping.parent:
                 old_grouping = groups.pop()
-                label = create_label(old_grouping.footer, offset, True, indentation)
+                if old_grouping.footer:
+                    label = create_label(old_grouping.footer, offset, True, indentation)
+                    if child_label is not None:
+                        dependency[child_label] = label
+                        child_label = label
+                    else:
+                        assert last_label is not None and last_offset is not None
+                        labels[last_offset, offset] = last_label, label
                 indentation -= 20
-                if child_label is not None:
-                    dependency[child_label] = label
-                    child_label = label
-                else: labels[offset] = label, False
 
             offset += 10
             indentation += 20
@@ -374,11 +418,12 @@ class Visualisation(object):
                 grouping = new_groups.pop()
                 groups.append(grouping)
                 indentation += 20
-                label = create_label(grouping.header, offset, False, indentation)
-                dependency[label] = parent_label
-                parent_label = label
+                if grouping.header:
+                    label = create_label(grouping.header, offset, False, indentation)
+                    dependency[label] = parent_label
+                    parent_label = label
 
-            labels[offset] = parent_label, True
+            last_label, last_offset = parent_label, offset
             lower, upper = interval
 
             if mirror: position_range = range(upper - 1, lower - 1, - 1)
@@ -400,12 +445,15 @@ class Visualisation(object):
         child_label = None
         while groups:
             grouping = groups.pop()
-            label = create_label(grouping.footer, offset, True, indentation)
+            if grouping.footer:
+                label = create_label(grouping.footer, offset, True, indentation)
+                if child_label is not None:
+                    dependency[child_label] = label
+                    child_label = label
+                else:
+                    assert last_label is not None and last_offset is not None
+                    labels[last_offset, offset] = last_label, label
             indentation -= 20
-            if child_label is not None:
-                dependency[child_label] = label
-                child_label = label
-            else: labels[offset] = label, False
 
         self.position_labels.dependency = dependency
         self.position_labels.labels = labels
