@@ -8,7 +8,7 @@ from grouping import Grouping, Interval
 class Visualisation(object):
     def __init__(self, parent, data, coloring,
                  explanation, time_labels, position_groups,
-                 mirror = False):
+                 mirror = True):
 
         style = themed.Style()
         style.configure('.', background = 'white')
