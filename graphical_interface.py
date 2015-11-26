@@ -563,7 +563,7 @@ class Visualisation(object):
 
         def hide_content(value, rectangle):
             self.content.itemconfigure('value{:x}'.format(value), state = 'hidden')
-            self.legend.itemconfigure(rectangle, fill = self.backgroundColor)
+            self.legend.itemconfigure(rectangle, fill = self.background_color)
             self.legend.tag_bind(rectangle, '<Button-1>', lambda _: show_content(value, rectangle))
 
         x, y = 0, 0
