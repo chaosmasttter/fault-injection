@@ -370,6 +370,9 @@ class Pointer(Structure):
         if same is not None: return same
         return self.destination.same(other.destination)
 
+class Reference(Pointer):
+    def description(self): return self.destination.description() + ' &'
+
 class Function(Structure):
     def __init__(self, return_type = None, argument_types = None, size = None):
         super().__init__(size)
@@ -502,12 +505,12 @@ def parse_structures_recursive(string):
             return new_structure
         return structure
 
-    def parse_fields(fields):
+    def parse_fields(fields, delimiter = ','):
         imbalance = { '<>' : 0, '()' : 0 }
         field = []
 
         for char in fields:
-            if not any(imbalance.values()) and char == ',':
+            if not any(imbalance.values()) and char == delimiter:
                 yield ''.join(field).strip()
                 field = []
                 continue
@@ -584,10 +587,10 @@ def parse_structures_recursive(string):
         lookup = lookup_data_structure(structure)
         if not lookup:
             data_structures[structure.name] = structure
-            known = lookup
+            known = False
         else:
-            lookup = update_structure(lookup, structure)
-            structure, known = lookup, True
+            structure = update_structure(lookup, structure)
+            known = True
 
         structure = SpecificStructure(structure, constant, volatile)
         return parse_specific_pointer(pointer_partition, structure, known)
@@ -596,36 +599,42 @@ def parse_structures_recursive(string):
         function_partition = field.partition('()')
         structure, known = parse_specific_structure(function_partition[0])
 
-        if function_partition[1]:
-            return_type, constant, volatile = structure
-            assert constant == volatile == False
+        if not function_partition[1]: return structure, known
 
-            function_partition = function_partition[2].partition('(')
-            assert function_partition[1]
-            function_partition = function_partition[2].partition(')')
-            assert function_partition[1]
+        return_type, constant, volatile = structure
+        assert constant == volatile == False
 
-            function = Function(return_type)
-            arguments = parse_fields(function_partition[0])
-            for argument in arguments:
-                if argument == 'void': break
-                function.add_argument_type(parse_general_structure(argument)[0])
+        function_partition = function_partition[2].partition('(')
+        assert function_partition[1]
+        function_partition = function_partition[2].partition(')')
+        assert function_partition[1]
 
-            lookup = lookup_structure(function, functions)
-            if not lookup:
-                functions.append(function)
-                known = False
-            else: function, known = lookup, True
+        function = Function(return_type)
+        arguments = parse_fields(function_partition[0])
+        for argument in arguments:
+            if argument == 'void': break
 
-            pointer_partition = function_partition[2].strip().partition('*')
-            assert not pointer_partition[0] and pointer_partition[1]
-            return parse_specific_pointer(pointer_partition, function, known)
+            reference_partition = argument.partition('&')
+            structure = parse_general_structure(reference_partition[0])[0]
+            if reference_partition[1]:
+                assert not reference_partition[2]
+                structure = SpecificStructure(Reference(structure))
+            function.add_argument_type(structure)
 
-        return structure, known
+        lookup = lookup_structure(function, functions)
+        if not lookup:
+            functions.append(function)
+            known = False
+        else: function, known = lookup, True
+
+        pointer_partition = function_partition[2].strip().partition('*')
+        assert not pointer_partition[0] and pointer_partition[1]
+        return parse_specific_pointer(pointer_partition, function, known)
 
     def parse_structure(line, depth = 0, substructure = False):
-        try: segments = line.strip().split(separators[depth])
-        except IndexError: segments = [line.strip()]
+        line = line.strip()
+        try: segments = list(parse_fields(line, separators[depth]))
+        except IndexError: segments = [line]
 
         fields = tuple(parse_fields(segments[0]))
 
