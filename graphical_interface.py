@@ -140,8 +140,10 @@ class Visualisation(object):
         self.content.create_line(x, y_start, x, y_end, tag = 'pointer_line')
         self.content.create_line(x_start, y, x_end, y, tag = 'pointer_line')
 
+        self.time_labels.itemconfigure('line', state = 'hidden')
         try: time_label = self.time_labels.find_closest(x,0)[0]
         except IndexError: return
+        finally: self.time_labels.itemconfigure('line', state = 'normal')
 
         time = self.time_labels.bbox(time_label)[0]
         if time < x:
@@ -430,9 +432,14 @@ class Visualisation(object):
             offset += 10
             indentation += 20
 
-            parent_label = create_label(grouping.header, offset, False, indentation)
+            if mirror and not new_groups: text = grouping.footer
+            else: text = grouping.header
+
+            parent_label = create_label(text, offset, False, indentation)
+
             unpaired_labels.append(parent_label)
             groups.append(grouping)
+
             while new_groups:
                 grouping = new_groups.pop()
                 groups.append(grouping)

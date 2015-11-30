@@ -277,7 +277,7 @@ def parse_results(filename, data_class):
     trace = SortedDict()
     line_number = 0
 
-    with open(filename) as result_file:
+    with open(filename, encoding = 'utf8', errors = 'ignore') as result_file:
         reader = csv.DictReader(result_file)
         result = Result(reader.fieldnames)
         for line in reader:
@@ -295,12 +295,11 @@ def parse_results(filename, data_class):
     return data, trace
 
 def create_register_labels():
-    labels = {}
+    labels = SortedDict()
 
     for register in range(Register.count):
-        lower = register * Register.bits
-        upper = lower + Register.bits
-        labels[lower, upper] = Group(Register.show(register), group = Interval(lower, upper))
+        position = Interval(register * Register.bits, Register.bits, True)
+        labels[position] = Grouping(Register.show(register))
 
     return labels
 
@@ -473,14 +472,14 @@ def print_status(description, function, *arguments, **keyword_arguments):
 def main():
     arguments = parse_arguments()
 
-    root = Tk()
-
     if arguments.register:
         data, trace = print_status('parse register test results',
                                     parse_results, arguments.data, Register)
 
         position_labels = print_status('create register labels',
                                         create_register_labels)
+
+        mirror = False
 
     else:
         memory_usage = print_status('parse memory usage data',
@@ -497,6 +496,8 @@ def main():
 
         position_labels = print_status('create memory labels',
                                         create_memory_labels, clusters, memory_usage, structures)
+
+        mirror = True
 
     time_labels = {}
     symbol_table = None
@@ -533,8 +534,10 @@ def main():
         Result.OTHER_ERROR:              'other error'
     }
 
+    root = Tk()
+
     visualisation = print_status('create visualisation frame',
-                                  Visualisation, root, data, color_map, explanation, time_labels, position_labels)
+                                  Visualisation, root, data, color_map, explanation, time_labels, position_labels, mirror)
 
     visualisation.mainframe.grid(column = 0, row = 0, sticky = 'nsew')
 
