@@ -445,6 +445,15 @@ def create_memory_labels(clusters, memory_usage = None, structures = None):
 
     return groups
 
+def position_information(position_labels, time_labels, x, y):
+    interval_index = position_labels.bisect_left((y,y))
+    intervals = position_labels.keys()
+    interval = intervals[interval_index]
+
+    if interval.upper > y:
+        group = position_labels[interval]
+        
+
 def parse_arguments():
     parser = ArgumentParser()
     parser.add_argument("-b", "--binary",
