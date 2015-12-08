@@ -351,7 +351,7 @@ def create_memory_labels(clusters, memory_usage = None, structures = None):
         if parent_interval is not None:
             assert isinstance(parent_interval, Interval)
             offsets = map(lambda value: value - parent_interval.lower, interval)
-            labels = tuple(map(lambda offset: '+{:d}'.format(offset >> shift), offsets))
+            labels = tuple(map(lambda offset: '+ 0x{:X}'.format(offset >> shift), offsets))
         else:
             labels = tuple(map(lambda value: Memory.show(value >> shift), interval))
         groups[interval] = Grouping(*labels, parent = parent)
@@ -445,14 +445,37 @@ def create_memory_labels(clusters, memory_usage = None, structures = None):
 
     return groups
 
-def position_information(position_labels, time_labels, x, y):
-    interval_index = position_labels.bisect_left((y,y))
+def position_information(time_labels, position_labels, x, y):
+    times, labels = zip(*time_labels)
+    time_index = times.bisect(x)
+    name = labels[time_index]
+    
+    interval_index = position_labels.bisect((y,y))
     intervals = position_labels.keys()
     interval = intervals[interval_index]
 
-    if interval.upper > y:
-        group = position_labels[interval]
-        
+    group = position_labels[interval]
+    if interval.upper <= y:
+        next_group = position_labels[intervals[interval_index + 1]]
+        generation_difference = group.generation - next_group.generation
+        if generation_difference > 0:
+            for _ in range(generation_difference):
+                group = group.parent
+        elif generation_difference < 0:
+            for _ in range(- generation_difference):
+                next_group = next_group.parent
+        while group is not next_group:
+            group = group.parent
+            next_group = next_group.parent
+            assert group is not None and next_group is not None
+
+    groups = []
+    while group.parent is not None:
+        groups.append(group)
+        group = group.parent
+    groups.reverse()
+
+    return ''
 
 def parse_arguments():
     parser = ArgumentParser()

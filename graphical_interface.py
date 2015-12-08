@@ -347,7 +347,7 @@ class Visualisation(object):
                     for label in upper_todo: self.position_labels.itemconfigure(label, state = 'hidden')
                     break
 
-    def plot(self, data, time_labels, position_groups, location_information, mirror = True):
+    def plot(self, data, time_labels, position_groups, location_information, mirror = False):
         vertical_lines = {}
         horizontal_lines = {}
 

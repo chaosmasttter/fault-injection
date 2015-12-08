@@ -18,9 +18,12 @@ class Grouping(namedtuple('Grouping', ['header', 'footer', 'parent'])):
     def __new__(self_class, header = '', footer = '', parent = None, *arguments, **keyword_arguments):
         self = super(Grouping, self_class).__new__(self_class, header, footer, parent)
         self.initialise(*arguments, **keyword_arguments)
+        self.seen = False
+        if parent is None: self.generation = 0
+        else: self.generation = parent.generation +1 
         return self
 
-    def initialise(self): self.seen = False
+    def initialise(self): pass
 
 class Choice(Grouping):
     def initialise(self, subgroups = []):
