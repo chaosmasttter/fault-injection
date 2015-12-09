@@ -452,11 +452,11 @@ def position_information(time_labels, position_labels, x, y):
     
     interval_index = position_labels.bisect((y,y))
     intervals = position_labels.keys()
-    interval = intervals[interval_index]
+    interval = intervals[interval_index - 1]
 
     group = position_labels[interval]
     if interval.upper <= y:
-        next_group = position_labels[intervals[interval_index + 1]]
+        next_group = position_labels[intervals[interval_index]]
         generation_difference = group.generation - next_group.generation
         if generation_difference > 0:
             for _ in range(generation_difference):

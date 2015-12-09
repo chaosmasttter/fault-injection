@@ -2,6 +2,7 @@ from tkinter import Tk, Canvas, Scrollbar, HORIZONTAL, VERTICAL
 from tkinter.filedialog import asksaveasfile
 import tkinter.ttk as themed
 from canvasvg import SVGdocument, convert
+from sortedcontainers import SortedDict
 
 from grouping import Grouping, Interval
 
@@ -37,16 +38,19 @@ class Visualisation(object):
             canvas['background'] = self.background_color
             canvas['highlightthickness'] = 0
 
-        self.content.no_managing = False
-        self.content.cancel_identifier = None
-
         default_text = self.time_labels.create_text(0, 0, anchor = 'n')
         self.time_labels.default_text_size = self.time_labels.bbox(default_text)[3]
         self.time_labels.delete(default_text)
 
+        self.content.unit_point = self.content.create_rectangle(0, 0, 0, 0, width = 0, state = 'hidden')
+
+        self.content.no_managing = False
+        self.content.cancel_identifier = None
+
         self.time_labels.lines = {}
         self.position_labels.lines = {}
         self.content.lines = []
+        self.time_labels.labels = SortedDict()
 
         self.plot(data, time_labels, position_groups, None, mirror)
 
@@ -129,41 +133,15 @@ class Visualisation(object):
 
     def show_pointer(self, x, y):
         self.content.cancel_identifier = None
+        x, y = self.normalize_coordinates(self.content.canvasx(x), self.content.canvasy(y))
 
-        x = self.content.canvasx(x)
-        y = self.content.canvasy(y)
-        x_start = self.content.canvasx(0)
-        y_start = self.content.canvasy(0)
-        x_end = self.content.canvasx(self.content.winfo_width())
-        y_end = self.content.canvasy(self.content.winfo_height())
-
-        self.content.create_line(x, y_start, x, y_end, tag = 'pointer_line')
-        self.content.create_line(x_start, y, x_end, y, tag = 'pointer_line')
-
-        self.time_labels.itemconfigure('line', state = 'hidden')
-        try: time_label = self.time_labels.find_closest(x,0)[0]
-        except IndexError: return
-        finally: self.time_labels.itemconfigure('line', state = 'normal')
-
-        time = self.time_labels.bbox(time_label)[0]
-        if time < x:
-            new_time_label = self.time_labels.find_above(time_label)[0]
-            time = self.time_labels.bbox(new_time_label)[0]
-            while time < x:
-                time_label = new_time_label
-                new_time_label = self.time_labels.find_above(time_label)[0]
-                time = self.time_labels.bbox(new_time_label)[0]
-        else:
-            while time >= x:
-                time_label = self.time_labels.find_below(time_label)[0]
-                time = self.time_labels.bbox(time_label)[0]
-
-        self.show_lines(time_label, self.time_labels)
-        self.content.lines.append((time_label, self.time_labels))
+        time_index = self.time_labels.labels.bisect(x)
+        if time_index:
+            time_label = self.time_labels.labels[self.time_labels.labels.keys()[time_index - 1]]
+            self.show_lines(time_label, self.time_labels)
+            self.content.lines.append((time_label, self.time_labels))
 
     def hide_pointer(self):
-        self.content.delete('pointer_line')
-        
         if self.content.cancel_identifier is not None:
             self.content.after_cancel(self.content.cancel_identifier)
             self.content.cancel_identifier = None
@@ -173,32 +151,20 @@ class Visualisation(object):
         self.content.lines = []
 
     def show_lines(self, label, canvas):
-        if canvas is self.position_labels:
-            try: labels = [label, self.position_labels.label_pairing[label]]
-            except (KeyError, AttributeError): labels = [label]
-        else: labels = [label]
-
-        for label in labels:
-            for line, on_canvas in canvas.lines[label]:
-                if on_canvas: line_canvas = canvas
-                else: line_canvas = self.content
-                line_canvas.tag_raise(line)
-                line_canvas.itemconfigure(line, fill = 'black')
-            canvas.itemconfigure(label, fill = 'darkblue')
+        for line, on_canvas in canvas.lines[label]:
+            if on_canvas: line_canvas = canvas
+            else: line_canvas = self.content
+            line_canvas.tag_raise(line)
+            line_canvas.itemconfigure(line, fill = 'black')
+        canvas.itemconfigure(label, fill = 'darkblue')
 
     def hide_lines(self, label, canvas):
-        if canvas is self.position_labels:
-            try: labels = [label, self.position_labels.label_pairing[label]]
-            except (KeyError, AttributeError): labels = [label]
-        else: labels = [label]
-
-        for label in labels:
-            for line, on_canvas in canvas.lines[label]:
-                if on_canvas: line_canvas = canvas
-                else: line_canvas = self.content
-                line_canvas.tag_lower(line)
-                line_canvas.itemconfigure(line, fill = 'lightgrey')
-            canvas.itemconfigure(label, fill = 'black')
+        for line, on_canvas in canvas.lines[label]:
+            if on_canvas: line_canvas = canvas
+            else: line_canvas = self.content
+            line_canvas.tag_lower(line)
+            line_canvas.itemconfigure(line, fill = 'lightgrey')
+        canvas.itemconfigure(label, fill = 'black')
 
     def zoom(self, scale, event):
         x, y = self.content.canvasx(event.x), self.content.canvasy(event.y)
@@ -220,6 +186,11 @@ class Visualisation(object):
         self.position_labels.scale('all', x, y, 1,     scale)
 
         self.manage_content()
+
+    def normalize_coordinates(self, x, y):
+        position = (self.content.canvasx(x), self.content.canvasy(y))
+        unit_coordinates = self.content.coords(self.content.unit_point)
+        return map(lambda a, b: (a - b) // self.current_zoom, position, unit_coordinates)
 
     def manage_content(self, event = None):
         if self.content.no_managing:
@@ -271,7 +242,7 @@ class Visualisation(object):
             height += text_size
             for label, x, y in line_start:
                 line = self.time_labels.create_line(x, y, x, height, tags = 'line', fill = 'lightgrey')
-                self.time_labels.lines[label] = self.time_labels.lines[label][0], (line, True)
+                self.time_labels.lines[label][1:] = [(line, True)]
             self.time_labels.tag_lower('line')
 
     def manage_position_labels(self, event = None):
@@ -351,12 +322,8 @@ class Visualisation(object):
         vertical_lines = {}
         horizontal_lines = {}
 
-        unit_point = self.content.create_rectangle(1, 1, 1, 1, width = 0, state = 'hidden')
-
         def show_location(correction, event):
-            position = [self.content.canvasx(event.x), self.content.canvasy(event.y)]
-            unit_coordinates = self.content.coords(unit_point)
-            x,y = map(lambda x, y: x + y, map(lambda x, y: x // y, position, unit_coordinates), correction)
+            x,y = map(lambda a, b: a + b, self.normalize_coordinates(event.x, event.y), correction)
 
  #            self.location_label['text'] = location_information(x,y)
     
@@ -389,7 +356,7 @@ class Visualisation(object):
         dependency = {}
         labels = {}
         last_label, last_offset = None, None
-        label_pairing = {}
+        label_pairs = []
         unpaired_labels = []
 
 
@@ -418,8 +385,7 @@ class Visualisation(object):
                     label = create_label(text, offset, True, indentation)
 
                     if not paire_label is None:
-                        label_pairing[label] = paire_label
-                        label_pairing[paire_label] = label
+                        label_pairs.append((label, paire_label))
 
                     if child_label is not None:
                         dependency[child_label] = label
@@ -469,8 +435,7 @@ class Visualisation(object):
 
                         box = time[0], location, time[1], location + 1
                         point = self.content.create_rectangle(box, width = 0, fill = self.coloring[value], tag = 'value{:x}'.format(value))
-                        self.content.tag_bind(point, '<Motion>', lambda event, correction = (0, - offset):
-                                              show_location(correction, event))
+                        self.content.tag_bind(point, '<Motion>', lambda event, correction = (0, position - location): show_location(correction, event))
                 except KeyError: pass
             offset += interval.length
 
@@ -486,8 +451,7 @@ class Visualisation(object):
                 label = create_label(text, offset, True, indentation)
 
                 if paire_label is not None:
-                    label_pairing[label] = paire_label
-                    label_pairing[paire_label] = label
+                    label_pairs.append((label, paire_label))
 
                 if child_label is not None:
                     dependency[child_label] = label
@@ -497,25 +461,31 @@ class Visualisation(object):
                     labels[last_offset, offset] = last_label, label
             indentation -= 20
 
-        for time, text in sorted(time_labels): create_label(text, time)
+        for time, text in sorted(time_labels):
+            label = create_label(text, time)
+            self.time_labels.labels[time] = label
 
         drawing_regions = self.drawing_regions()
         lower_x, upper_x, lower_y, upper_y, _, _, positions_lower_x, positions_upper_x = drawing_regions
 
         for label, time in vertical_lines.items():
             self.time_labels.lines[label] \
-                = (self.content.create_line(time, lower_y, time, upper_y), False),
+                = [(self.content.create_line(time, lower_y, time, upper_y), False)]
             self.hide_lines(label, self.time_labels)
         for label, position in horizontal_lines.items():
             position, indentation = position
-            self.position_labels.lines[label] \
-                = (self.content.create_line(lower_x, position, upper_x, position), False) \
-                , (self.position_labels.create_line(positions_lower_x + indentation, position, positions_upper_x, position), True)
+            self.position_labels.lines[label] = \
+                [ (self.content.create_line(lower_x, position, upper_x, position), False) \
+                , (self.position_labels.create_line(positions_lower_x + indentation, position, positions_upper_x, position), True) ]
             self.hide_lines(label, self.position_labels)
+
+        for label_1, label_2 in label_pairs:
+            list_1 = self.position_labels.lines[label_1]
+            list_2 = self.position_labels.lines[label_2]
+            self.position_labels.lines[label_1] = self.position_labels.lines[label_2] = list_1 + list_2
 
         self.position_labels.dependency = dependency
         self.position_labels.labels = labels
-        self.position_labels.label_pairing = label_pairing
 
         self.set_scroll_regions(drawing_regions)
         self.content.width  = upper_x - lower_x
