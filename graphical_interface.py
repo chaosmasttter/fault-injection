@@ -17,8 +17,7 @@ class Visualisation(object):
         self.coloring = coloring
         self.explanation = explanation
 
-        self.current_zoom = 1.0
-        self.minimal_zoom = 1.0
+        self.minimal_zoom = 0.1
         self.maximal_zoom = 10.0
 
         # the frame containing all widgets needed for the visualisation
@@ -42,7 +41,8 @@ class Visualisation(object):
         self.time_labels.default_text_size = self.time_labels.bbox(default_text)[3]
         self.time_labels.delete(default_text)
 
-        self.content.unit_point = self.content.create_rectangle(0, 0, 0, 0, width = 0, state = 'hidden')
+        self.content.origin     = self.content.create_rectangle(0, 0, 0, 0, width = 0, state = 'hidden')
+        self.content.unit_point = self.content.create_rectangle(1, 1, 1, 1, width = 0, state = 'hidden')
 
         self.content.no_managing = False
         self.content.cancel_identifier = None
@@ -94,8 +94,8 @@ class Visualisation(object):
         self.content.event_add('<<ZoomIn>>',  '+', '<Control-Button-4>')
         self.content.event_add('<<ZoomOut>>', '-', '<Control-Button-5>')
         
-        self.content.bind('<<ZoomIn>>',  lambda event: self.zoom(1.1, event)) 
-        self.content.bind('<<ZoomOut>>', lambda event: self.zoom(0.9, event))
+        self.content.bind('<<ZoomIn>>',  lambda _: self.zoom(1.1)) 
+        self.content.bind('<<ZoomOut>>', lambda _: self.zoom(0.9))
 
         self.legend .bind('<Configure>', self.plot_legend)
         self.content.bind('<Configure>', self.manage_content)
@@ -133,13 +133,37 @@ class Visualisation(object):
 
     def show_pointer(self, x, y):
         self.content.cancel_identifier = None
-        x, y = self.normalize_coordinates(self.content.canvasx(x), self.content.canvasy(y))
+        x, y = self.normalize_coordinates(x, y)
 
         time_index = self.time_labels.labels.bisect(x)
         if time_index:
             time_label = self.time_labels.labels[self.time_labels.labels.keys()[time_index - 1]]
             self.show_lines(time_label, self.time_labels)
             self.content.lines.append((time_label, self.time_labels))
+
+        interval_index = self.position_labels.labels.bisect((y,y))
+        intervals = self.position_labels.labels.keys()
+        interval = intervals[interval_index - 1]
+    
+        group = self.position_labels.labels[interval]
+        if interval.upper <= y:
+            next_group = self.position_labels[intervals[interval_index]]
+            generation_difference = group.generation - next_group.generation
+            if generation_difference > 0:
+                for _ in range(generation_difference):
+                    group = group.parent
+            elif generation_difference < 0:
+                for _ in range(- generation_difference):
+                    next_group = next_group.parent
+            while group is not next_group:
+                group = group.parent
+                next_group = next_group.parent
+                assert group is not None and next_group is not None
+    
+        groups = []
+        while group.parent is not None:
+            groups.append(group)
+            group = group.parent
 
     def hide_pointer(self):
         if self.content.cancel_identifier is not None:
@@ -166,20 +190,21 @@ class Visualisation(object):
             line_canvas.itemconfigure(line, fill = 'lightgrey')
         canvas.itemconfigure(label, fill = 'black')
 
-    def zoom(self, scale, event):
-        x, y = self.content.canvasx(event.x), self.content.canvasy(event.y)
+    def zoom(self, scale):
+        x = self.content.canvasx(self.content.winfo_pointerx())
+        y = self.content.canvasy(self.content.winfo_pointery())
 
-        if scale < 1: self.content.bind('<<ZoomIn>>',  lambda event: self.zoom(1.1, event))
-        if scale > 1: self.content.bind('<<ZoomOut>>', lambda event: self.zoom(0.9, event))
+        if scale < 1: self.content.bind('<<ZoomIn>>',  lambda _: self.zoom(1.1))
+        if scale > 1: self.content.bind('<<ZoomOut>>', lambda _: self.zoom(0.9))
 
-        if scale * self.current_zoom > self.maximal_zoom:
-            scale = self.maximal_zoom / self.current_zoom
+        current_zoom = self.content.coords(self.content.unit_point)[0] - self.content.coords(self.content.origin)[0]
+
+        if scale * current_zoom > self.maximal_zoom:
+            scale = self.maximal_zoom / current_zoom
             self.content.unbind('<<ZoomIn>>')
-        if scale * self.current_zoom < self.minimal_zoom:
-            scale = self.minimal_zoom / self.current_zoom
+        if scale * current_zoom < self.minimal_zoom:
+            scale = self.minimal_zoom / current_zoom
             self.content.unbind('<<ZoomOut>>')
-
-        self.current_zoom *= scale
 
         self.content        .scale('all', x, y, scale, scale)
         self.time_labels    .scale('all', x, y, scale, 1,   )
@@ -189,8 +214,9 @@ class Visualisation(object):
 
     def normalize_coordinates(self, x, y):
         position = (self.content.canvasx(x), self.content.canvasy(y))
-        unit_coordinates = self.content.coords(self.content.unit_point)
-        return map(lambda a, b: (a - b) // self.current_zoom, position, unit_coordinates)
+        origin_coordinates = self.content.coords(self.content.origin)
+        unit_coordinates   = self.content.coords(self.content.unit_point)
+        return map(lambda a, b, c: (a - c) // (b - c), position, unit_coordinates, origin_coordinates)
 
     def manage_content(self, event = None):
         if self.content.no_managing:
@@ -359,7 +385,6 @@ class Visualisation(object):
         label_pairs = []
         unpaired_labels = []
 
-
         items = position_groups.items()
         if mirror: items = reversed(items)
         for interval, grouping in items:
@@ -378,11 +403,8 @@ class Visualisation(object):
                 old_grouping = groups.pop()
                 paire_label = unpaired_labels.pop()
 
-                if mirror and child_label is None: text = old_grouping.header
-                else: text = old_grouping.footer
-
-                if text:
-                    label = create_label(text, offset, True, indentation)
+                if old_grouping.footer:
+                    label = create_label(old_grouping.footer, offset, True, indentation)
 
                     if not paire_label is None:
                         label_pairs.append((label, paire_label))
@@ -398,10 +420,7 @@ class Visualisation(object):
             offset += 10
             indentation += 20
 
-            if mirror and not new_groups: text = grouping.footer
-            else: text = grouping.header
-
-            parent_label = create_label(text, offset, False, indentation)
+            parent_label = create_label(grouping.header, offset, False, indentation)
 
             unpaired_labels.append(parent_label)
             groups.append(grouping)
@@ -411,11 +430,8 @@ class Visualisation(object):
                 groups.append(grouping)
                 indentation += 20
 
-                if mirror and not new_groups: text = grouping.footer
-                else: text = grouping.header
-
-                if text:
-                    label = create_label(text, offset, False, indentation)
+                if grouping.header:
+                    label = create_label(grouping.header, offset, False, indentation)
                     unpaired_labels.append(label)
                     dependency[label] = parent_label
                     parent_label = label
@@ -444,11 +460,8 @@ class Visualisation(object):
             grouping = groups.pop()
             paire_label = unpaired_labels.pop()
 
-            if mirror and child_label is None: text = grouping.header
-            else: text = grouping.footer
-
-            if text:
-                label = create_label(text, offset, True, indentation)
+            if grouping.footer:
+                label = create_label(grouping.footer, offset, True, indentation)
 
                 if paire_label is not None:
                     label_pairs.append((label, paire_label))

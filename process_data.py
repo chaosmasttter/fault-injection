@@ -340,7 +340,7 @@ def generate_clusters(positions):
         else: upper = position + 1
     yield Interval(lower, upper)
 
-def create_memory_labels(clusters, memory_usage = None, structures = None):
+def create_memory_labels(clusters, memory_usage = None, structures = None, mirror = True):
     shift = int(math.log2(Memory.bits))
     groups = SortedDict()
 
@@ -354,7 +354,11 @@ def create_memory_labels(clusters, memory_usage = None, structures = None):
             labels = tuple(map(lambda offset: '+ 0x{:X}'.format(offset >> shift), offsets))
         else:
             labels = tuple(map(lambda value: Memory.show(value >> shift), interval))
-        groups[interval] = Grouping(*labels, parent = parent)
+
+        if mirror: labels = reversed(labels)
+        grouping = Grouping(*labels, parent = parent)
+        if parent_interval: grouping.offset = (interval.lower - parent_interval.lower) >> shift
+        groups[interval] = grouping
 
     def create_structure_labels(structure, position, cluster, parent = None):
         description = structure.description()
@@ -451,31 +455,16 @@ def position_information(time_labels, position_labels, x, y):
     name = labels[time_index]
     
     interval_index = position_labels.bisect((y,y))
-    intervals = position_labels.keys()
-    interval = intervals[interval_index - 1]
-
+    interval = position_labels.keys()[interval_index - 1]
     group = position_labels[interval]
-    if interval.upper <= y:
-        next_group = position_labels[intervals[interval_index]]
-        generation_difference = group.generation - next_group.generation
-        if generation_difference > 0:
-            for _ in range(generation_difference):
-                group = group.parent
-        elif generation_difference < 0:
-            for _ in range(- generation_difference):
-                next_group = next_group.parent
-        while group is not next_group:
-            group = group.parent
-            next_group = next_group.parent
-            assert group is not None and next_group is not None
+    assert interval.lower < y < interval.upper
 
     groups = []
     while group.parent is not None:
         groups.append(group)
         group = group.parent
-    groups.reverse()
 
-    return ''
+    return 'injection position: ... injection time: ...'
 
 def parse_arguments():
     parser = ArgumentParser()
