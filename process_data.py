@@ -449,22 +449,47 @@ def create_memory_labels(clusters, memory_usage = None, structures = None, mirro
 
     return groups
 
-def position_information(time_labels, position_labels, x, y):
+def position_information(time_labels, position_labels, register, x, y):
+    x = round(x)
+    y = round(y)
+    
     times, labels = zip(*time_labels)
-    time_index = times.bisect(x)
-    name = labels[time_index]
+    time_index = bisect(times, x)
+    if time_index:
+        name = labels[time_index - 1]
+        injection_time = '{:d} in function {}'.format(x, name)
+    else: injection_time = '{:d}'.format(x)
     
     interval_index = position_labels.bisect((y,y))
     interval = position_labels.keys()[interval_index - 1]
     group = position_labels[interval]
-    assert interval.lower < y < interval.upper
+    assert interval.lower <= y < interval.upper
 
     groups = []
+    original_group = group
     while group.parent is not None:
-        groups.append(group)
         group = group.parent
+        groups.append(group)
 
-    return 'injection position: ... injection time: ...'
+    if register:
+        assert not groups
+        bit_offset = y % Register.bits
+        injection_position = 'in register {} at bit offset 0x{:X}'.format(group.header, bit_offset)
+    else:
+        bit_offset = y % Memory.bits
+        injection_position = []
+        if groups:
+            while groups:
+                group = groups.pop()
+                injection_position.append('in {} '.format(group.header))
+            offset = original_group.offset + (y - interval.lower) // Memory.bits
+            injection_position.append('at offset 0x{:X}'.format(offset))
+        else:
+            address = y // Memory.bits
+            injection_position.append('at address 0x{:X}'.format(address))
+        injection_position.append(' at bit offset 0x{:X}'.format(bit_offset))
+        injection_position = ''.join(injection_position)
+    return 'injection position: {} | injection time: {}'.format(injection_position, injection_time)
 
 def parse_arguments():
     parser = ArgumentParser()
@@ -558,7 +583,8 @@ def main():
     root = Tk()
 
     visualisation = print_status('create visualisation frame',
-                                  Visualisation, root, data, color_map, explanation, time_labels, position_labels, mirror)
+                                 Visualisation, root, data, color_map, explanation, time_labels, position_labels,
+                                 lambda x, y: position_information(time_labels, position_labels, arguments.register, x, y), mirror)
 
     visualisation.mainframe.grid(column = 0, row = 0, sticky = 'nsew')
 

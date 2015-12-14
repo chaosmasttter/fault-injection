@@ -9,7 +9,7 @@ from grouping import Grouping, Interval
 class Visualisation(object):
     def __init__(self, parent, data, coloring,
                  explanation, time_labels, position_groups,
-                 mirror = True):
+                 location_information, mirror = True):
 
         style = themed.Style()
         style.configure('.', background = 'white')
@@ -28,7 +28,7 @@ class Visualisation(object):
         self.position_labels = Canvas(self.mainframe)
         self.legend          = Canvas(self.mainframe)
 
-        self.location_label = themed.Label(self.mainframe)
+        self.location_label = themed.Label(self.mainframe, font = '-size 11')
 
         # set the background color of the canvases
         # to match that of the themed widgets
@@ -52,7 +52,7 @@ class Visualisation(object):
         self.content.lines = []
         self.time_labels.labels = SortedDict()
 
-        self.plot(data, time_labels, position_groups, None, mirror)
+        self.plot(data, time_labels, position_groups, location_information, mirror)
 
         self.scroll_horizontal = themed.Scrollbar(self.mainframe, orient = HORIZONTAL)
         self.scroll_vertical   = themed.Scrollbar(self.mainframe, orient = VERTICAL)
@@ -111,10 +111,10 @@ class Visualisation(object):
         self.time_labels      .grid(column = 1, row = 0, sticky = 'nsew')
         self.position_labels  .grid(column = 0, row = 1, sticky = 'nsew')
         self.content          .grid(column = 1, row = 1, sticky = 'nsew')
+        self.location_label   .grid(column = 1, row = 2, sticky = 'nsew')
+        self.scroll_horizontal.grid(column = 1, row = 3, sticky = 'nsew')
+        self.legend           .grid(column = 1, row = 4, sticky = 'nsew')
         self.scroll_vertical  .grid(column = 2, row = 1, sticky = 'nsew')
-        self.scroll_horizontal.grid(column = 1, row = 2, sticky = 'nsew')
-        self.legend           .grid(column = 1, row = 3, sticky = 'nsew')
-        self.location_label   .grid(column = 1, row = 4, sticky = 'nsew')
 
         self.mainframe.columnconfigure(1, weight = 1)
         self.mainframe.rowconfigure(   1, weight = 1)
@@ -350,8 +350,7 @@ class Visualisation(object):
 
         def show_location(correction, event):
             x,y = map(lambda a, b: a + b, self.normalize_coordinates(event.x, event.y), correction)
-
- #            self.location_label['text'] = location_information(x,y)
+            self.location_label['text'] = location_information(x,y)
     
         def create_label(text, distance, above_line = None, indentation = 0):
             anchor = 'nw'
@@ -452,6 +451,7 @@ class Visualisation(object):
                         box = time[0], location, time[1], location + 1
                         point = self.content.create_rectangle(box, width = 0, fill = self.coloring[value], tag = 'value{:x}'.format(value))
                         self.content.tag_bind(point, '<Motion>', lambda event, correction = (0, position - location): show_location(correction, event))
+                        self.content.tag_bind(point, '<Leave>', lambda event: self.location_label.configure(text = ''))
                 except KeyError: pass
             offset += interval.length
 
