@@ -28,7 +28,7 @@ class Visualisation(object):
         self.position_labels = Canvas(self.mainframe)
         self.legend          = Canvas(self.mainframe)
 
-        self.location_label = themed.Label(self.mainframe, font = '-size 11')
+        self.location_label = themed.Label(self.mainframe, font = '-size 9')
 
         # set the background color of the canvases
         # to match that of the themed widgets
@@ -44,6 +44,7 @@ class Visualisation(object):
         self.content.origin     = self.content.create_rectangle(0, 0, 0, 0, width = 0, state = 'hidden')
         self.content.unit_point = self.content.create_rectangle(1, 1, 1, 1, width = 0, state = 'hidden')
 
+        self.pointer = False
         self.content.no_managing = False
         self.content.cancel_identifier = None
 
@@ -132,6 +133,12 @@ class Visualisation(object):
         self.content.cancel_identifier = self.content.after(200, self.show_pointer, event.x, event.y)
 
     def show_pointer(self, x, y):
+        canvas_x = self.content.canvasx(x)
+        canvas_y = self.content.canvasy(y)
+        self.content.vertical_line = self.content.create_line(canvas_x, canvas_y - 10, canvas_x, canvas_y + 10)
+        self.content.horizontal_line = self.content.create_line(canvas_x - 10, canvas_y, canvas_x + 10, canvas_y)
+        self.pointer = True
+
         self.content.cancel_identifier = None
         x, y = self.normalize_coordinates(x, y)
 
@@ -169,6 +176,11 @@ class Visualisation(object):
         if self.content.cancel_identifier is not None:
             self.content.after_cancel(self.content.cancel_identifier)
             self.content.cancel_identifier = None
+
+        if self.pointer:
+            self.content.delete(self.content.vertical_line)
+            self.content.delete(self.content.horizontal_line)
+            self.pointer = False
 
         for label, canvas in self.content.lines:
             self.hide_lines(label, canvas)
@@ -365,8 +377,8 @@ class Visualisation(object):
             label = canvas.create_text(*position, text = text, tag = 'label', anchor = anchor)
             canvas.tag_bind(label, '<Enter>',
                             lambda _, label = label: canvas.after_idle(self.show_lines, label, canvas))
-            canvas.tag_bind(label, '<Leave>',
-                            lambda _, label = label: canvas.after_idle(self.hide_lines, label, canvas))
+            #canvas.tag_bind(label, '<Leave>',
+            #                lambda _, label = label: canvas.after_idle(self.hide_lines, label, canvas))
 
             if canvas is self.time_labels:
                 vertical_lines[label] = distance
@@ -451,7 +463,7 @@ class Visualisation(object):
                         box = time[0], location, time[1], location + 1
                         point = self.content.create_rectangle(box, width = 0, fill = self.coloring[value], tag = 'value{:x}'.format(value))
                         self.content.tag_bind(point, '<Motion>', lambda event, correction = (0, position - location): show_location(correction, event))
-                        self.content.tag_bind(point, '<Leave>', lambda event: self.location_label.configure(text = ''))
+                        #self.content.tag_bind(point, '<Leave>', lambda event: self.location_label.configure(text = ''))
                 except KeyError: pass
             offset += interval.length
 
@@ -637,7 +649,10 @@ class Visualisation(object):
         position_labels_graphic, position_labels_width, _ = create_graphic(self.position_labels)
         position_labels_graphic.setAttribute('x', "-%0.3f" % position_labels_width)
 
-        content_height += 5
+        infromation_graphic, _, information_height = create_graphic(self.location_label)
+        legend_graphic.setAttribute('y', "%0.3f" % content_height)
+
+        content_height += information_height + 5
 
         legend_graphic, _, legend_height = create_graphic(self.legend)
         legend_graphic.setAttribute('y', "%0.3f" % content_height)
