@@ -1,5 +1,6 @@
 from tkinter import Tk, Canvas, Scrollbar, HORIZONTAL, VERTICAL
 from tkinter.filedialog import asksaveasfile
+from tkinter.font import Font
 import tkinter.ttk as themed
 from canvasvg import SVGdocument, convert
 from sortedcontainers import SortedDict
@@ -11,8 +12,8 @@ class Visualisation(object):
                  explanation, time_labels, position_groups,
                  location_information, mirror = True):
 
-        style = themed.Style()
-        style.configure('.', background = 'white')
+        self.style = themed.Style()
+        self.style.configure('.', background = 'white')
 
         self.coloring = coloring
         self.explanation = explanation
@@ -32,7 +33,7 @@ class Visualisation(object):
 
         # set the background color of the canvases
         # to match that of the themed widgets
-        self.background_color = style.lookup('.', 'background')
+        self.background_color = self.style.lookup('.', 'background')
         for canvas in self.content, self.time_labels, self.position_labels, self.legend:
             canvas['background'] = self.background_color
             canvas['highlightthickness'] = 0
@@ -133,12 +134,6 @@ class Visualisation(object):
         self.content.cancel_identifier = self.content.after(200, self.show_pointer, event.x, event.y)
 
     def show_pointer(self, x, y):
-        canvas_x = self.content.canvasx(x)
-        canvas_y = self.content.canvasy(y)
-        self.content.vertical_line = self.content.create_line(canvas_x, canvas_y - 10, canvas_x, canvas_y + 10)
-        self.content.horizontal_line = self.content.create_line(canvas_x - 10, canvas_y, canvas_x + 10, canvas_y)
-        self.pointer = True
-
         self.content.cancel_identifier = None
         x, y = self.normalize_coordinates(x, y)
 
@@ -176,11 +171,6 @@ class Visualisation(object):
         if self.content.cancel_identifier is not None:
             self.content.after_cancel(self.content.cancel_identifier)
             self.content.cancel_identifier = None
-
-        if self.pointer:
-            self.content.delete(self.content.vertical_line)
-            self.content.delete(self.content.horizontal_line)
-            self.pointer = False
 
         for label, canvas in self.content.lines:
             self.hide_lines(label, canvas)
@@ -377,11 +367,13 @@ class Visualisation(object):
             label = canvas.create_text(*position, text = text, tag = 'label', anchor = anchor)
             canvas.tag_bind(label, '<Enter>',
                             lambda _, label = label: canvas.after_idle(self.show_lines, label, canvas))
-            #canvas.tag_bind(label, '<Leave>',
-            #                lambda _, label = label: canvas.after_idle(self.hide_lines, label, canvas))
+            canvas.tag_bind(label, '<Motion>',
+                            lambda _, label = label: canvas.after_idle(self.show_lines, label, canvas))
+            canvas.tag_bind(label, '<Leave>',
+                            lambda _, label = label: canvas.after_idle(self.hide_lines, label, canvas))
 
             if canvas is self.time_labels:
-                vertical_lines[label] = distance
+                vertical_lines[label]   = distance
             else:
                 horizontal_lines[label] = distance, indentation
 
@@ -462,8 +454,9 @@ class Visualisation(object):
 
                         box = time[0], location, time[1], location + 1
                         point = self.content.create_rectangle(box, width = 0, fill = self.coloring[value], tag = 'value{:x}'.format(value))
+                        self.content.tag_bind(point, '<Enter>',  lambda event, correction = (0, position - location): show_location(correction, event))
                         self.content.tag_bind(point, '<Motion>', lambda event, correction = (0, position - location): show_location(correction, event))
-                        #self.content.tag_bind(point, '<Leave>', lambda event: self.location_label.configure(text = ''))
+                        self.content.tag_bind(point, '<Leave>',  lambda event: self.location_label.configure(text = ''))
                 except KeyError: pass
             offset += interval.length
 
@@ -641,25 +634,55 @@ class Visualisation(object):
 
             return graphic, width, height
 
+        def create_label(label, vertical_offset):
+            element = document.createElement('text')
+            element.appendChild(document.createTextNode(self.location_label['text']))
+
+            # get font parameters
+            font = Font(name = self.style.lookup('TLabel', 'font'), exists = True, font = self.location_label['font'])
+            font_parameters = font.actual()
+
+            # set font type
+            element.setAttribute('font-family', font_parameters['family'])
+            if font_parameters['slant'] != 'roman':
+                element.setAttribute('font-style', font_parameters['slant'])
+            if font_parameters['weight'] != 'normal':
+                element.setAttribute('font-weight', font_parameters['weight'])
+
+            # set font size
+            size = float(font_parameters['size'])
+            if size > 0: size_text = '{:f} pt'.format(+ size) # size in points
+            else:        size_text = '{:f}'   .format(- size) # size in pixels
+            element.setAttribute('font-size', size_text)
+
+            # set font decorations
+            decorations = []
+            if font_parameters['underline' ]: decoration.append('underline')
+            if font_parameters['overstrike']: decoration.append('line-through')
+            if decorations: element.setAttribute('text-decoration', ' '.join(decorations))
+
+            # set label vertical coordinate
+            element.setAttribute('y', '{:d}'.format(vertical_offset + font.metrics('ascent'))) 
+
+            document.documentElement.appendChild(element)
+            return font.metrics('linespace')
+
         content_width, content_height = create_graphic(self.content)[1:]
 
-        time_labels_graphic, _, time_labels_height = create_graphic(self.time_labels)
-        time_labels_graphic.setAttribute('y', "-%0.3f" % time_labels_height)
+        time_labels_graphic, time_labels_height = create_graphic(self.time_labels)[::2]
+        time_labels_graphic.setAttribute('y', '{:0.3f}'.format(- time_labels_height))
 
-        position_labels_graphic, position_labels_width, _ = create_graphic(self.position_labels)
-        position_labels_graphic.setAttribute('x', "-%0.3f" % position_labels_width)
+        position_labels_graphic, position_labels_width = create_graphic(self.position_labels)[:2]
+        position_labels_graphic.setAttribute('x', '{:0.3f}'.format(- position_labels_width))
 
-        infromation_graphic, _, information_height = create_graphic(self.location_label)
-        legend_graphic.setAttribute('y', "%0.3f" % content_height)
+        information_height = create_label(self.location_label, content_height)
 
-        content_height += information_height + 5
-
-        legend_graphic, _, legend_height = create_graphic(self.legend)
-        legend_graphic.setAttribute('y', "%0.3f" % content_height)
+        legend_graphic, legend_height = create_graphic(self.legend)[::2]
+        legend_graphic.setAttribute('y', '{:0.3f}'.format(content_height + information_height + 5))
 
         set_view_box(document.documentElement,
                      position_labels_width + content_width,
-                     time_labels_height + content_height + legend_height,
+                     time_labels_height + content_height + information_height + legend_height + 5,
                      - position_labels_width, - time_labels_height)
 
         savefile = asksaveasfile(defaultextension = '.svg',
