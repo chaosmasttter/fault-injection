@@ -4,6 +4,7 @@ from tkinter.font import Font
 import tkinter.ttk as themed
 from canvasvg import SVGdocument, convert
 from sortedcontainers import SortedDict
+from collections import namedtuple
 
 from grouping import Grouping, Interval
 
@@ -45,16 +46,20 @@ class Visualisation(object):
         self.content.origin     = self.content.create_rectangle(0, 0, 0, 0, width = 0, state = 'hidden')
         self.content.unit_point = self.content.create_rectangle(1, 1, 1, 1, width = 0, state = 'hidden')
 
-        self.pointer = False
+        self.mirror = mirror
         self.content.no_managing = False
         self.content.cancel_identifier = None
 
-        self.time_labels.lines = {}
-        self.position_labels.lines = {}
-        self.content.lines = []
+        self.time_labels.inner_lines = {}
+        self.time_labels.outer_lines = {}
         self.time_labels.labels = SortedDict()
+        self.position_labels.labels = SortedDict()
 
-        self.plot(data, time_labels, position_groups, location_information, mirror)
+        self.content        .event_add('<<Inside>>', '<Enter>', '<Motion>')
+        self.time_labels    .event_add('<<Inside>>', '<Enter>', '<Motion>')
+        self.position_labels.event_add('<<Inside>>', '<Enter>', '<Motion>')
+
+        self.plot(data, time_labels, position_groups, location_information)
 
         self.scroll_horizontal = themed.Scrollbar(self.mainframe, orient = HORIZONTAL)
         self.scroll_vertical   = themed.Scrollbar(self.mainframe, orient = VERTICAL)
@@ -125,6 +130,12 @@ class Visualisation(object):
         if callable(function): function(*arguments)
         self.mainframe.update_idletasks()
 
+    def normalize_coordinates(self, x, y):
+        position = (self.content.canvasx(x), self.content.canvasy(y))
+        origin_coordinates = self.content.coords(self.content.origin)
+        unit_coordinates   = self.content.coords(self.content.unit_point)
+        return map(lambda a, b, c: (a - c) // (b - c), position, unit_coordinates, origin_coordinates)
+
     def manage_focus_loss(self):
         self.mainframe.focus_set()
         self.hide_pointer()
@@ -133,15 +144,47 @@ class Visualisation(object):
         self.hide_pointer()
         self.content.cancel_identifier = self.content.after(200, self.show_pointer, event.x, event.y)
 
+    def show_marker(self, labels, canvas, lines):
+        for label in labels:
+            canvas.itemconfigure(label, fill = 'darkblue')
+            canvas.addtag_withtag('active_marker_label', label)
+
+        for line, canvas in lines:
+            canvas.tag_raise(line)
+            canvas.itemconfigure(line, fill = 'black')
+            canvas.addtag_withtag('active_marker_line', line)
+
+    def hide_marker(self):
+        for canvas in [self.content, self.time_labels, self.position_labels]:
+            canvas.tag_lower('active_marker_line')
+            canvas.itemconfigure('active_marker_line', fill = 'lightgrey', tag = 'line')
+
+        for canvas in [self.time_labels, self.position_labels]:
+            canvas.itemconfigure('active_marker_label', fill = 'black')
+            canvas.dtag('active_marker_label', 'active_marker_label')
+
+    def show_time_marker(self, label):
+        self.show_marker([label], self.time_labels,
+                        [ (self.time_labels.inner_lines[label], self.time_labels)
+                        , (self.time_labels.outer_lines[label], self.content) ] )
+
+    def show_position_marker(self, group):
+        labels = []
+        if group.header is not None: labels.append(group.header)
+        if group.footer is not None: labels.append(group.footer)
+        self.show_marker(labels, self.position_labels,
+                        [ (line, self.position_labels) for line in group.inner_lines ] +
+                        [ (line, self.content)         for line in group.outer_lines ] )
+
     def show_pointer(self, x, y):
         self.content.cancel_identifier = None
         x, y = self.normalize_coordinates(x, y)
+        if self.mirror: y = - y
 
         time_index = self.time_labels.labels.bisect(x)
         if time_index:
             time_label = self.time_labels.labels[self.time_labels.labels.keys()[time_index - 1]]
-            self.show_lines(time_label, self.time_labels)
-            self.content.lines.append((time_label, self.time_labels))
+            self.show_time_marker(time_label)
 
         interval_index = self.position_labels.labels.bisect((y,y))
         intervals = self.position_labels.labels.keys()
@@ -149,22 +192,25 @@ class Visualisation(object):
     
         group = self.position_labels.labels[interval]
         if interval.upper <= y:
-            next_group = self.position_labels[intervals[interval_index]]
-            generation_difference = group.generation - next_group.generation
-            if generation_difference > 0:
-                for _ in range(generation_difference):
+            try:
+                next_group = self.position_labels.labels[intervals[interval_index]]
+            except IndexError: return
+
+            depth_difference = group.depth - next_group.depth
+            if depth_difference > 0:
+                for _ in range(depth_difference):
                     group = group.parent
-            elif generation_difference < 0:
-                for _ in range(- generation_difference):
+            elif depth_difference < 0:
+                for _ in range(- depth_difference):
                     next_group = next_group.parent
             while group is not next_group:
                 group = group.parent
                 next_group = next_group.parent
+                if group is next_group is None: return
                 assert group is not None and next_group is not None
     
-        groups = []
-        while group.parent is not None:
-            groups.append(group)
+        while group is not None:
+            self.show_position_marker(group)
             group = group.parent
 
     def hide_pointer(self):
@@ -172,25 +218,7 @@ class Visualisation(object):
             self.content.after_cancel(self.content.cancel_identifier)
             self.content.cancel_identifier = None
 
-        for label, canvas in self.content.lines:
-            self.hide_lines(label, canvas)
-        self.content.lines = []
-
-    def show_lines(self, label, canvas):
-        for line, on_canvas in canvas.lines[label]:
-            if on_canvas: line_canvas = canvas
-            else: line_canvas = self.content
-            line_canvas.tag_raise(line)
-            line_canvas.itemconfigure(line, fill = 'black')
-        canvas.itemconfigure(label, fill = 'darkblue')
-
-    def hide_lines(self, label, canvas):
-        for line, on_canvas in canvas.lines[label]:
-            if on_canvas: line_canvas = canvas
-            else: line_canvas = self.content
-            line_canvas.tag_lower(line)
-            line_canvas.itemconfigure(line, fill = 'lightgrey')
-        canvas.itemconfigure(label, fill = 'black')
+        self.hide_marker()
 
     def zoom(self, scale):
         x = self.content.canvasx(self.content.winfo_pointerx())
@@ -213,12 +241,6 @@ class Visualisation(object):
         self.position_labels.scale('all', x, y, 1,     scale)
 
         self.manage_content()
-
-    def normalize_coordinates(self, x, y):
-        position = (self.content.canvasx(x), self.content.canvasy(y))
-        origin_coordinates = self.content.coords(self.content.origin)
-        unit_coordinates   = self.content.coords(self.content.unit_point)
-        return map(lambda a, b, c: (a - c) // (b - c), position, unit_coordinates, origin_coordinates)
 
     def manage_content(self, event = None):
         if self.content.no_managing:
@@ -270,240 +292,190 @@ class Visualisation(object):
             height += text_size
             for label, x, y in line_start:
                 line = self.time_labels.create_line(x, y, x, height, tags = 'line', fill = 'lightgrey')
-                self.time_labels.lines[label][1:] = [(line, True)]
+                self.time_labels.inner_lines[label] = line
             self.time_labels.tag_lower('line')
 
     def manage_position_labels(self, event = None):
-        dependency = self.position_labels.dependency
+        self.position_labels.itemconfigure('label', state = 'hidden', fill = 'black')
+        for group in self.position_labels.labels.values():
+            if group.header_moveable or group.footer_moveable:
+                pass
 
-        self.position_labels.itemconfigure('label', state = 'normal', fill = 'black')
-        for lower_label, upper_label in self.position_labels.labels.values():
 
-            lower_todo = []
-            while lower_label in dependency:
-                lower_todo.append(lower_label)
-                lower_label = dependency[lower_label]
+    def plot(self, data, time_labels, position_groups, location_information):
+        group_number = 0
 
-            upper_todo = []
-            while upper_label in dependency:
-                upper_todo.append(upper_label)
-                upper_label = dependency[upper_label]
-
-            lower_box = self.position_labels.bbox(lower_label)[1::2]
-            upper_box = self.position_labels.bbox(upper_label)[1::2]
-
-            if lower_box[1] > upper_box[0]:
-                self.position_labels.itemconfigure(upper_label, state = 'hidden')
-                if lower_box[1] > upper_box[1]: self.position_labels.itemconfigure(lower_label, state = 'hidden')
-                for label in lower_todo: self.position_labels.itemconfigure(label, state = 'hidden')
-                for label in upper_todo: self.position_labels.itemconfigure(label, state = 'hidden')
-                lower_todo = upper_todo = []
-
-            lower_limit = lower_box[1]
-            upper_limit = upper_box[0]
-            while lower_todo and upper_todo:
-                lower_label = lower_todo.pop()
-                upper_label = upper_todo.pop()
-                lower_box = self.position_labels.bbox(lower_label)[1::2]
-                upper_box = self.position_labels.bbox(upper_label)[1::2]
-                lower_distance = lower_limit - lower_box[0]
-                upper_distance = upper_limit - upper_box[1]
-                self.position_labels.move(lower_label, 0, lower_distance)
-                self.positoin_labels.move(upper_label, 0, upper_distance)
-                lower_limit = lower_box[1] + lower_distance
-                upper_limit = upper_box[0] + upper_distance
-
-                if lower_limit > upper_limit:
-                    self.position_labels.itemconfigure(upper_label, state = 'hidden')
-                    if lower_limit > upper_box[1] + upper_distance:
-                        self.position_labels.itemconfigure(lower_label, state = 'hidden')
-                    for label in lower_todo: self.position_labels.itemconfigure(label, state = 'hidden')
-                    for label in upper_todo: self.position_labels.itemconfigure(label, state = 'hidden')
-                    lower_todo = upper_todo = []
-                    break
-
-            while lower_todo:
-                lower_label = lower_todo.pop()
-                lower_box = self.position_labels.bbox(lower_label)[1::2]
-                lower_distance = lower_limit - lower_box[0]
-                self.position_labels.move(lower_label, 0, lower_distance)
-                lower_limit = lower_box[1] + lower_distance
-
-                if lower_limit > upper_limit:
-                    self.position_labels.itemconfigure(lower_label, state = 'hidden')
-                    for label in lower_todo: self.position_labels.itemconfigure(label, state = 'hidden')
-                    break
-
-            while upper_todo:
-                upper_label = upper_todo.pop()
-                upper_box = self.position_labels.bbox(upper_label)[1::2]
-                upper_distance = upper_limit - upper_box[1]
-                self.positoin_labels.move(upper_label, 0, upper_distance)
-                upper_limit = upper_box[0] + upper_distance
-
-                if upper_limit < lower_limit:
-                    self.position_labels.itemconfigure(lower_label, state = 'hidden')
-                    for label in upper_todo: self.position_labels.itemconfigure(label, state = 'hidden')
-                    break
-
-    def plot(self, data, time_labels, position_groups, location_information, mirror = False):
-        vertical_lines = {}
-        horizontal_lines = {}
-
-        def show_location(correction, event):
-            x,y = map(lambda a, b: a + b, self.normalize_coordinates(event.x, event.y), correction)
-            self.location_label['text'] = location_information(x,y)
+        def show_location(event, correction):
+            x, y = self.normalize_coordinates(event.x, event.y)
+            if self.mirror: y = - y
+            coordinates = map(lambda a, b: a - b, (x, y), correction)
+            self.location_label['text'] = location_information(*coordinates)
     
-        def create_label(text, distance, above_line = None, indentation = 0):
-            anchor = 'nw'
-            if above_line is None:
-                canvas = self.time_labels
-                position = distance, 0
-            else:
-                canvas = self.position_labels
-                position = indentation, distance
-                if above_line: anchor = 'sw'
+        def create_time_label(label_text, distance):
+            label = self.time_labels.create_text(distance, 0, text = label_text, tag = 'label', anchor = 'nw')
 
-            label = canvas.create_text(*position, text = text, tag = 'label', anchor = anchor)
-            canvas.tag_bind(label, '<Enter>',
-                            lambda _, label = label: canvas.after_idle(self.show_lines, label, canvas))
-            canvas.tag_bind(label, '<Motion>',
-                            lambda _, label = label: canvas.after_idle(self.show_lines, label, canvas))
-            canvas.tag_bind(label, '<Leave>',
-                            lambda _, label = label: canvas.after_idle(self.hide_lines, label, canvas))
-
-            if canvas is self.time_labels:
-                vertical_lines[label]   = distance
-            else:
-                horizontal_lines[label] = distance, indentation
+            self.time_labels.tag_bind(label, '<<Inside>>', lambda _, local_label = label:
+                                      self.time_labels.after_idle(self.show_time_marker, local_label))
+            self.time_labels.tag_bind(label, '<Leave>', lambda _: self.time_labels.after_idle(self.hide_marker))
 
             return label
 
-        offset = -10
-        indentation = 0
-        groups = []
-        dependency = {}
-        labels = {}
-        last_label, last_offset = None, None
-        label_pairs = []
-        unpaired_labels = []
+        def create_group_labels(group, interval, parent = None):
+            nonlocal group_number
+            group_tag = 'group{:x}'.format(group_number)
+            group_number += 1
 
-        items = position_groups.items()
-        if mirror: items = reversed(items)
-        for interval, grouping in items:
-            assert isinstance(grouping, Grouping)
-            assert isinstance(interval, Interval)
-            grouping.seen = True
+            if self.mirror:
+                lower = - interval.lower
+                upper = - interval.upper
+            else:
+                lower = + interval.upper
+                upper = + interval.lower
+            
+            if not group.header: header_label = None
+            else: header_label = self.position_labels.create_text(group.depth * 20, upper,
+                                                                  text = group.header, tags = ('label', group_tag),
+                                                                  anchor = 'nw')
 
-            new_groups = []
-            while grouping.parent and not grouping.parent.seen:
-                new_groups.append(grouping)
-                grouping = grouping.parent
-                grouping.seen = True
 
-            child_label = None
-            while groups and groups[-1] is not grouping.parent:
-                old_grouping = groups.pop()
-                paire_label = unpaired_labels.pop()
+            if not group.footer: footer_label = None
+            else: footer_label = self.position_labels.create_text(group.depth * 20, lower,
+                                                                  text = group.footer, tags = ('label', group_tag),
+                                                                  anchor = 'sw')
 
-                if old_grouping.footer:
-                    label = create_label(old_grouping.footer, offset, True, indentation)
+            label_group = Grouping(header_label, footer_label, parent)
 
-                    if not paire_label is None:
-                        label_pairs.append((label, paire_label))
+            self.position_labels.tag_bind(group_tag, '<<Inside>>', lambda _, local_label_group = label_group:
+                                          self.position_labels.after_idle(self.show_position_marker, local_label_group))
+            self.position_labels.tag_bind(group_tag, '<Leave>', lambda _: self.position_labels.after_idle(self.hide_marker))
+ 
+            return label_group
 
-                    if child_label is not None:
-                        dependency[child_label] = label
-                        child_label = label
-                    else:
-                        assert last_label is not None and last_offset is not None
-                        labels[last_offset, offset] = last_label, label
-                indentation -= 20
+        GroupData = namedtuple('GroupData', ['group', 'interval', 'leaf'])
 
-            offset += 10
-            indentation += 20
+        offset = 0
+        groups_list = []
+        depth = 0
 
-            parent_label = create_label(grouping.header, offset, False, indentation)
-
-            unpaired_labels.append(parent_label)
-            groups.append(grouping)
-
-            while new_groups:
-                grouping = new_groups.pop()
-                groups.append(grouping)
-                indentation += 20
-
-                if grouping.header:
-                    label = create_label(grouping.header, offset, False, indentation)
-                    unpaired_labels.append(label)
-                    dependency[label] = parent_label
-                    parent_label = label
-                else: unpaired_labels.append(None)
-
-            last_label, last_offset = parent_label, offset
-            lower, upper = interval
-
-            if mirror: position_range = range(upper - 1, lower - 1, - 1)
-            else:      position_range = range(lower, upper)
-
-            for position in position_range:
+        for interval, group in position_groups.items():
+            for position in range(*interval):
                 try:
                     for time, value in data[position].items():
-                        if mirror: location = offset + upper - position - 1
-                        else:      location = offset + position - lower
+                        location = Interval(offset + position - interval.lower, 1, length_given = True)
+                        if self.mirror: box = time[0], - location[0], time[1], - location[1]
+                        else:           box = time[0], + location[0], time[1], + location[1]
 
-                        box = time[0], location, time[1], location + 1
                         point = self.content.create_rectangle(box, width = 0, fill = self.coloring[value], tag = 'value{:x}'.format(value))
-                        self.content.tag_bind(point, '<Enter>',  lambda event, correction = (0, position - location): show_location(correction, event))
-                        self.content.tag_bind(point, '<Motion>', lambda event, correction = (0, position - location): show_location(correction, event))
-                        self.content.tag_bind(point, '<Leave>',  lambda event: self.location_label.configure(text = ''))
+                        self.content.tag_bind(point, '<<Inside>>',  lambda event, correction = (0, offset - interval.lower): show_location(event, correction))
+                        self.content.tag_bind(point, '<Leave>',     lambda _: self.location_label.configure(text = ''))
                 except KeyError: pass
-            offset += interval.length
 
-        child_label = None
-        while groups:
-            grouping = groups.pop()
-            paire_label = unpaired_labels.pop()
+            groups_list.append(GroupData(group, Interval(offset, interval.length, True), True))
+            depth = max(group.depth, depth)
 
-            if grouping.footer:
-                label = create_label(grouping.footer, offset, True, indentation)
+            offset += interval.length + 10
 
-                if paire_label is not None:
-                    label_pairs.append((label, paire_label))
+        depth_stack = []
 
-                if child_label is not None:
-                    dependency[child_label] = label
-                    child_label = label
+        while depth >= 0:
+            rest_list = []
+            current_list = []
+
+            parent_group = None
+            parent_lower = None
+            parent_upper = None
+
+            for group_data in groups_list:
+                group, interval = group_data[:2]
+                if group.depth == depth:
+                    current_list.append(group_data)
+                    if group.parent is not None:
+                        if parent_group is group.parent:
+                            parent_upper = interval.upper
+                        else:
+                            if parent_group is not None:
+                                rest_list.append(GroupData(parent_group, Interval(parent_lower, parent_upper), False))
+                            parent_group = group.parent
+                            parent_lower, parent_upper = interval
+                    else: assert parent_group is None
                 else:
-                    assert last_label is not None and last_offset is not None
-                    labels[last_offset, offset] = last_label, label
-            indentation -= 20
+                    if parent_group is not None:
+                        rest_list.append(GroupData(parent_group, Interval(parent_lower, parent_upper), False))
+                        parent_group = None
+                    rest_list.append(group_data)
+            if parent_group is not None:
+                rest_list.append(GroupData(parent_group, Interval(parent_lower, parent_upper), False))
+
+            depth_stack.append(current_list)
+            groups_list = rest_list
+            depth -= 1
+
+        assert not groups_list
+
+        LabelGroupData = namedtuple('LabelGroupData', ['group', 'interval'])
+        groups = [] 
+
+        while depth_stack:
+            current_list = depth_stack.pop()
+            last_parent = None
+            last_label_group = None
+
+            for group, interval, leaf in current_list:
+                if group.parent is not None: parent_label_group = group.parent.label_group
+                else:                        parent_label_group = None
+
+                label_group = create_group_labels(group, interval, parent_label_group)
+
+                if last_parent is not group.parent:
+                    if last_label_group is not None:
+                        last_label_group.footer_moveable = True
+                    label_group.header_moveable = True
+                    last_parent = group.parent
+                else:
+                    if last_label_group is not None:
+                        last_label_group.footer_moveable = False
+                    label_group.header_moveable = False
+
+                label_group.inner_lines = []
+                label_group.outer_lines = []
+
+                groups.append(LabelGroupData(label_group, interval))
+
+                if leaf: self.position_labels.labels[interval] = label_group
+                else: group.label_group = label_group
+                last_label_group = label_group
+
+            if last_parent is not None:
+                assert last_label_group is not None
+                last_label_group.footer_moveable = True
 
         for time, text in sorted(time_labels):
-            label = create_label(text, time)
+            label = create_time_label(text, time)
             self.time_labels.labels[time] = label
 
         drawing_regions = self.drawing_regions()
         lower_x, upper_x, lower_y, upper_y, _, _, positions_lower_x, positions_upper_x = drawing_regions
 
-        for label, time in vertical_lines.items():
-            self.time_labels.lines[label] \
-                = [(self.content.create_line(time, lower_y, time, upper_y), False)]
-            self.hide_lines(label, self.time_labels)
-        for label, position in horizontal_lines.items():
-            position, indentation = position
-            self.position_labels.lines[label] = \
-                [ (self.content.create_line(lower_x, position, upper_x, position), False) \
-                , (self.position_labels.create_line(positions_lower_x + indentation, position, positions_upper_x, position), True) ]
-            self.hide_lines(label, self.position_labels)
+        position_labels_width = positions_upper_x - positions_lower_x
+        horizontal_lines = {}
 
-        for label_1, label_2 in label_pairs:
-            list_1 = self.position_labels.lines[label_1]
-            list_2 = self.position_labels.lines[label_2]
-            self.position_labels.lines[label_1] = self.position_labels.lines[label_2] = list_1 + list_2
+        for group, interval in groups:
+            for position in interval:
+                if self.mirror: position = - position
+                line = self.position_labels.create_line(20 * group.depth, position, position_labels_width, position, tag = 'line', fill = 'lightgrey')
+                group.inner_lines.append(line)
 
-        self.position_labels.dependency = dependency
-        self.position_labels.labels = labels
+                if position in horizontal_lines:
+                    group.outer_lines.append(horizontal_lines[position])
+                else:
+                    line = self.content.create_line(lower_x, position, upper_x, position, tag = 'line', fill = 'lightgrey')
+                    group.outer_lines.append(line)
+                    horizontal_lines[position] = line
+
+        for time, label in self.time_labels.labels.items():
+            self.time_labels.outer_lines[label] = self.content.create_line(time, lower_y, time, upper_y, tag = 'line', fill = 'lightgrey')
+
+        self.content.tag_lower('line')
 
         self.set_scroll_regions(drawing_regions)
         self.content.width  = upper_x - lower_x
@@ -609,9 +581,9 @@ class Visualisation(object):
             if Y is None: Y = height
             else: Y -= y
 
-            graphic.setAttribute('width',   "%0.3f" % width)
-            graphic.setAttribute('height',  "%0.3f" % height)
-            graphic.setAttribute('viewBox', "%0.3f %0.3f %0.3f %0.3f" % (x, y, X, Y))
+            graphic.setAttribute('width',   '{:0.3f}'.format(width))
+            graphic.setAttribute('height',  '{:0.3f}'.format(height))
+            graphic.setAttribute('viewBox', '{:0.3f} {:0.3f} {:0.3f} {:0.3f}'.format(x, y, X, Y))
             return graphic
 
         def create_graphic(canvas):
