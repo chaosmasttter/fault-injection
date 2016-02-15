@@ -460,9 +460,10 @@ def position_information(time_labels, position_labels, register, x, y):
         injection_time = '{:d} in function {}'.format(x, name)
     else: injection_time = '{:d}'.format(x)
     
-    interval_index = position_labels.bisect((y,y))
+    interval_index = position_labels.bisect(Interval(y,y))
     interval = position_labels.keys()[interval_index - 1]
     group = position_labels[interval]
+    print(interval.lower, y, interval.upper)
     assert interval.lower <= y < interval.upper
 
     groups = []

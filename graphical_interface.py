@@ -144,10 +144,9 @@ class Visualisation(object):
         self.hide_pointer()
         self.content.cancel_identifier = self.content.after(200, self.show_pointer, event.x, event.y)
 
-    def show_marker(self, labels, canvas, lines):
-        for label in labels:
-            canvas.itemconfigure(label, fill = 'darkblue')
-            canvas.addtag_withtag('active_marker_label', label)
+    def show_marker(self, label, canvas, lines):
+        canvas.itemconfigure(label, fill = 'darkblue')
+        canvas.addtag_withtag('active_marker_label', label)
 
         for line, canvas in lines:
             canvas.tag_raise(line)
@@ -164,15 +163,12 @@ class Visualisation(object):
             canvas.dtag('active_marker_label', 'active_marker_label')
 
     def show_time_marker(self, label):
-        self.show_marker([label], self.time_labels,
+        self.show_marker(label, self.time_labels,
                         [ (self.time_labels.inner_lines[label], self.time_labels)
                         , (self.time_labels.outer_lines[label], self.content) ] )
 
     def show_position_marker(self, group):
-        labels = []
-        if group.header is not None: labels.append(group.header)
-        if group.footer is not None: labels.append(group.footer)
-        self.show_marker(labels, self.position_labels,
+        self.show_marker(group.tag, self.position_labels,
                         [ (line, self.position_labels) for line in group.inner_lines ] +
                         [ (line, self.content)         for line in group.outer_lines ] )
 
@@ -297,10 +293,89 @@ class Visualisation(object):
 
     def manage_position_labels(self, event = None):
         self.position_labels.itemconfigure('label', state = 'hidden', fill = 'black')
-        for group in self.position_labels.labels.values():
-            if group.header_moveable or group.footer_moveable:
-                pass
+        groups = self.position_labels.labels.values()
+        if self.mirror: groups = reversed(groups)
 
+        last_footer_bounds = []
+        last_footer_bound = None
+        
+        for group in groups:
+            group_stack = []
+            while group.header_moveable:
+                group_stack.append(group)
+                group = group.parent
+
+            self.position_labels.itemconfigure(group.tag, state = 'normal')
+
+            assert not group.footer_moveable or last_footer_bound is not None
+            if not group.footer_moveable:
+                last_footer_bounds.append(last_footer_bound)
+                last_footer_bound = self.position_labels.coords(group.inner_lines[1])[1]
+
+            if group.header is not None:
+                header_bound = self.position_labels.bbox(group.header)[3]
+            else:
+                header_bound = self.position_labels.coords(group.inner_lines[0])[1]
+
+            if group.footer is not None:
+                footer_bound = self.position_labels.bbox(group.footer)[1]
+            else:
+                footer_bound = last_footer_bound
+
+            stop = False
+
+            if group.footer and footer_bound <= header_bound:
+                stop = True
+                self.position_labels.itemconfigure(group.footer, state = 'hidden')
+
+            if group.header and header_bound >= last_footer_bound:
+                stop = True
+                self.position_labels.itemconfigure(group.header, state = 'hidden')
+
+            if stop:
+                last_footer_bound = last_footer_bounds.pop()
+                continue
+
+            last_header_bound = header_bound
+            last_footer_bound = footer_bound
+
+            while group_stack:
+                group = group_stack.pop()
+                self.position_labels.itemconfigure(group.tag, state = 'normal')
+
+                if not group.footer_moveable:
+                    last_footer_bounds.append(last_footer_bound)
+                    last_footer_bound = self.position_labels.coords(group.inner_lines[1])[1]
+
+                if group.header is not None:
+                    header_bound = self.position_labels.bbox(group.header)[3]
+                else:
+                    header_bound = last_header_bound
+
+                if group.footer is not None:
+                    footer_bound = self.position_labels.bbox(group.footer)[1]
+                else:
+                    footer_bound = last_footer_bound
+
+                stop = False
+
+                if group.footer and footer_bound <= header_bound:
+                    stop = True
+                    self.position_labels.itemconfigure(group.footer, state = 'hidden')
+
+                if group.header and header_bound >= last_footer_bound:
+                    stop = True
+                    self.position_labels.itemconfigure(group.header, state = 'hidden')
+
+                if stop:
+                    last_footer_bound = last_footer_bounds.pop()
+                    break
+
+                last_header_bound = header_bound
+                last_footer_bound = footer_bound
+
+            if not stop:
+                last_footer_bound = last_footer_bounds.pop()
 
     def plot(self, data, time_labels, position_groups, location_information):
         group_number = 0
@@ -344,6 +419,7 @@ class Visualisation(object):
                                                                   anchor = 'sw')
 
             label_group = Grouping(header_label, footer_label, parent)
+            label_group.tag = group_tag
 
             self.position_labels.tag_bind(group_tag, '<<Inside>>', lambda _, local_label_group = label_group:
                                           self.position_labels.after_idle(self.show_position_marker, local_label_group))
@@ -448,6 +524,7 @@ class Visualisation(object):
             if last_parent is not None:
                 assert last_label_group is not None
                 last_label_group.footer_moveable = True
+            else: last_label_group.footer_moveable = False
 
         for time, text in sorted(time_labels):
             label = create_time_label(text, time)
@@ -471,6 +548,8 @@ class Visualisation(object):
                     line = self.content.create_line(lower_x, position, upper_x, position, tag = 'line', fill = 'lightgrey')
                     group.outer_lines.append(line)
                     horizontal_lines[position] = line
+
+            if self.mirror: group.inner_lines.reverse()
 
         for time, label in self.time_labels.labels.items():
             self.time_labels.outer_lines[label] = self.content.create_line(time, lower_y, time, upper_y, tag = 'line', fill = 'lightgrey')
