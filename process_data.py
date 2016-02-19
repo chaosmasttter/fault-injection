@@ -449,23 +449,15 @@ def create_memory_labels(clusters, memory_usage = None, structures = None, mirro
 
     return groups
 
-def position_information(time_labels, position_labels, register, x, y):
-    x = round(x)
-    y = round(y)
-    
+def position_information(time_labels, position_labels, register, x, y, interval):
     times, labels = zip(*time_labels)
     time_index = bisect(times, x)
     if time_index:
         name = labels[time_index - 1]
         injection_time = '{:d} in function {}'.format(x, name)
     else: injection_time = '{:d}'.format(x)
-    
-    interval_index = position_labels.bisect(Interval(y,y))
-    interval = position_labels.keys()[interval_index - 1]
-    group = position_labels[interval]
-    print(interval.lower, y, interval.upper)
-    assert interval.lower <= y < interval.upper
 
+    group = position_labels[interval]
     groups = []
     original_group = group
     while group.parent is not None:
@@ -585,7 +577,7 @@ def main():
 
     visualisation = print_status('create visualisation frame',
                                  Visualisation, root, data, color_map, explanation, time_labels, position_labels,
-                                 lambda x, y: position_information(time_labels, position_labels, arguments.register, x, y), mirror)
+                                 lambda x, y, interval: position_information(time_labels, position_labels, arguments.register, x, y, interval), mirror)
 
     visualisation.mainframe.grid(column = 0, row = 0, sticky = 'nsew')
 

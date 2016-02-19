@@ -134,7 +134,7 @@ class Visualisation(object):
         position = (self.content.canvasx(x), self.content.canvasy(y))
         origin_coordinates = self.content.coords(self.content.origin)
         unit_coordinates   = self.content.coords(self.content.unit_point)
-        return map(lambda a, b, c: (a - c) // (b - c), position, unit_coordinates, origin_coordinates)
+        return map(lambda a, b, c: (a - c) / (b - c), position, unit_coordinates, origin_coordinates)
 
     def manage_focus_loss(self):
         self.mainframe.focus_set()
@@ -182,10 +182,17 @@ class Visualisation(object):
             time_label = self.time_labels.labels[self.time_labels.labels.keys()[time_index - 1]]
             self.show_time_marker(time_label)
 
-        interval_index = self.position_labels.labels.bisect((y,y))
+        interval_index = self.position_labels.labels.bisect((y, y + 1))
         intervals = self.position_labels.labels.keys()
         interval = intervals[interval_index - 1]
-    
+        if interval.upper <= y:
+            try:
+                next_interval = intervals[interval_index]
+            except IndexError: return
+            if y == next_interval.lower:
+                interval = next_interval
+                interval_index += 1
+
         group = self.position_labels.labels[interval]
         if interval.upper <= y:
             try:
@@ -318,7 +325,10 @@ class Visualisation(object):
                 header_bound = self.position_labels.coords(group.inner_lines[0])[1]
 
             if group.footer is not None:
-                footer_bound = self.position_labels.bbox(group.footer)[1]
+                footer_bound, footer_lower = self.position_labels.bbox(group.footer)[1::2]
+                if group.footer_moveable:
+                    self.position_labels.move(group.footer, 0, last_footer_bound - footer_lower)
+                    footer_bound += last_footer_bound - footer_lower
             else:
                 footer_bound = last_footer_bound
 
@@ -336,7 +346,6 @@ class Visualisation(object):
                 last_footer_bound = last_footer_bounds.pop()
                 continue
 
-            last_header_bound = header_bound
             last_footer_bound = footer_bound
 
             while group_stack:
@@ -348,12 +357,15 @@ class Visualisation(object):
                     last_footer_bound = self.position_labels.coords(group.inner_lines[1])[1]
 
                 if group.header is not None:
-                    header_bound = self.position_labels.bbox(group.header)[3]
-                else:
-                    header_bound = last_header_bound
+                    header_top, new_header_bound = self.position_labels.bbox(group.header)[1::2]
+                    self.position_labels.move(group.header, 0, header_bound - header_top)
+                    header_bound += new_header_bound - header_top
 
                 if group.footer is not None:
-                    footer_bound = self.position_labels.bbox(group.footer)[1]
+                    footer_bound, footer_bottom = self.position_labels.bbox(group.footer)[1::2]
+                    if group.footer_moveable:
+                        self.position_labels.move(group.footer, 0, last_footer_bound - footer_bottom)
+                        footer_bound += last_footer_bound - footer_bottom
                 else:
                     footer_bound = last_footer_bound
 
@@ -371,7 +383,6 @@ class Visualisation(object):
                     last_footer_bound = last_footer_bounds.pop()
                     break
 
-                last_header_bound = header_bound
                 last_footer_bound = footer_bound
 
             if not stop:
@@ -380,11 +391,16 @@ class Visualisation(object):
     def plot(self, data, time_labels, position_groups, location_information):
         group_number = 0
 
-        def show_location(event, correction):
+        def show_location(event, correction, interval):
             x, y = self.normalize_coordinates(event.x, event.y)
             if self.mirror: y = - y
-            coordinates = map(lambda a, b: a - b, (x, y), correction)
-            self.location_label['text'] = location_information(*coordinates)
+            x, y = map(lambda a, b: a - b, (x, y), correction)
+            x = round(x - 0.5)
+            y = round(y - 0.5)
+            if y < interval.lower: y = interval.lower
+            elif y >= interval.upper: y = interval.upper - 1
+
+            self.location_label['text'] = location_information(x, y, interval)
     
         def create_time_label(label_text, distance):
             label = self.time_labels.create_text(distance, 0, text = label_text, tag = 'label', anchor = 'nw')
@@ -442,7 +458,8 @@ class Visualisation(object):
                         else:           box = time[0], + location[0], time[1], + location[1]
 
                         point = self.content.create_rectangle(box, width = 0, fill = self.coloring[value], tag = 'value{:x}'.format(value))
-                        self.content.tag_bind(point, '<<Inside>>',  lambda event, correction = (0, offset - interval.lower): show_location(event, correction))
+                        self.content.tag_bind(point, '<<Inside>>',  lambda event, correction = (0, offset - interval.lower), interval = interval:
+                                              show_location(event, correction, interval))
                         self.content.tag_bind(point, '<Leave>',     lambda _: self.location_label.configure(text = ''))
                 except KeyError: pass
 
@@ -493,6 +510,7 @@ class Visualisation(object):
 
         while depth_stack:
             current_list = depth_stack.pop()
+            if self.mirror: current_list.reverse()
             last_parent = None
             last_label_group = None
 
@@ -537,19 +555,44 @@ class Visualisation(object):
         horizontal_lines = {}
 
         for group, interval in groups:
-            for position in interval:
-                if self.mirror: position = - position
-                line = self.position_labels.create_line(20 * group.depth, position, position_labels_width, position, tag = 'line', fill = 'lightgrey')
-                group.inner_lines.append(line)
+            header_position, footer_position = interval
+            if self.mirror: header_position, footer_position = - footer_position, - header_position
 
-                if position in horizontal_lines:
-                    group.outer_lines.append(horizontal_lines[position])
-                else:
-                    line = self.content.create_line(lower_x, position, upper_x, position, tag = 'line', fill = 'lightgrey')
-                    group.outer_lines.append(line)
-                    horizontal_lines[position] = line
+            inner_header_line = self.position_labels.create_line(20 * group.depth, header_position,
+                                                                 position_labels_width, header_position,
+                                                                 tag = 'line', fill = 'lightgrey')
 
-            if self.mirror: group.inner_lines.reverse()
+            if header_position in horizontal_lines:
+                outer_header_line = horizontal_lines[header_position]
+            else:
+                outer_header_line = self.content.create_line(lower_x, header_position, upper_x, header_position, tag = 'line', fill = 'lightgrey')
+                horizontal_lines[header_position] = outer_header_line
+
+            group.inner_lines.append(inner_header_line)
+            group.outer_lines.append(outer_header_line)
+            bound_group = group
+            while bound_group.header_moveable:
+                bound_group = bound_group.parent
+                bound_group.inner_lines.append(inner_header_line)
+                bound_group.outer_lines.append(outer_header_line)
+
+            inner_footer_line = self.position_labels.create_line(20 * group.depth, footer_position,
+                                                                 position_labels_width, footer_position,
+                                                                 tag = 'line', fill = 'lightgrey')
+
+            if footer_position in horizontal_lines:
+                outer_footer_line = horizontal_lines[footer_position]
+            else:
+                outer_footer_line = self.content.create_line(lower_x, footer_position, upper_x, footer_position, tag = 'line', fill = 'lightgrey')
+                horizontal_lines[footer_position] = outer_footer_line
+
+            group.inner_lines.append(inner_footer_line)
+            group.outer_lines.append(outer_footer_line)
+            bound_group = group
+            while bound_group.footer_moveable:
+                bound_group = bound_group.parent
+                bound_group.inner_lines.append(inner_footer_line)
+                bound_group.outer_lines.append(outer_footer_line)
 
         for time, label in self.time_labels.labels.items():
             self.time_labels.outer_lines[label] = self.content.create_line(time, lower_y, time, upper_y, tag = 'line', fill = 'lightgrey')
