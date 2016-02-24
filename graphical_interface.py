@@ -303,90 +303,132 @@ class Visualisation(object):
         groups = self.position_labels.labels.values()
         if self.mirror: groups = reversed(groups)
 
-        last_footer_bounds = []
-        last_footer_bound = None
-        
         for group in groups:
-            group_stack = []
-            while group.header_moveable:
-                group_stack.append(group)
-                group = group.parent
-
-            self.position_labels.itemconfigure(group.tag, state = 'normal')
-
-            assert not group.footer_moveable or last_footer_bound is not None
-            if not group.footer_moveable:
-                last_footer_bounds.append(last_footer_bound)
-                last_footer_bound = self.position_labels.coords(group.inner_lines[1])[1]
-
-            if group.header is not None:
-                header_bound = self.position_labels.bbox(group.header)[3]
-            else:
-                header_bound = self.position_labels.coords(group.inner_lines[0])[1]
-
-            if group.footer is not None:
-                footer_bound, footer_lower = self.position_labels.bbox(group.footer)[1::2]
-                if group.footer_moveable:
-                    self.position_labels.move(group.footer, 0, last_footer_bound - footer_lower)
-                    footer_bound += last_footer_bound - footer_lower
-            else:
-                footer_bound = last_footer_bound
+            header_bound = self.position_labels.coords(group.inner_lines[0])[1]
+            footer_bound = self.position_labels.coords(group.inner_lines[1])[1]
 
             stop = False
+            both_moveable = []
+            while group.header_moveable and group.footer_moveable:
+                both_moveable.append(group)
+                group = group.parent
 
-            if group.footer and footer_bound <= header_bound:
-                stop = True
-                self.position_labels.itemconfigure(group.footer, state = 'hidden')
-
-            if group.header and header_bound >= last_footer_bound:
-                stop = True
-                self.position_labels.itemconfigure(group.header, state = 'hidden')
-
-            if stop:
-                last_footer_bound = last_footer_bounds.pop()
-                continue
-
-            last_footer_bound = footer_bound
-
-            while group_stack:
-                group = group_stack.pop()
-                self.position_labels.itemconfigure(group.tag, state = 'normal')
-
-                if not group.footer_moveable:
-                    last_footer_bounds.append(last_footer_bound)
-                    last_footer_bound = self.position_labels.coords(group.inner_lines[1])[1]
+            if group.header_moveable:
+                assert not group.footer_moveable
+                header_moveable = []
+                while group.header_moveable:
+                    header_moveable.append(group)
+                    group = group.parent
 
                 if group.header is not None:
+                    self.position_labels.itemconfigure(group.header, state = 'normal')
+                    header_bound = self.position_labels.bbox(group.header)[3]
+
+                    if header_bound >= footer_bound:
+                        self.position_labels.itemconfigure(group.header, state = 'hidden')
+                        continue
+
+                while header_moveable:
+                    group = header_moveable.pop()
+                    if group.header is not None:
+                        self.position_labels.itemconfigure(group.header, state = 'normal')
+                        header_top, new_header_bound = self.position_labels.bbox(group.header)[1::2]
+                        self.position_labels.move(group.header, 0, header_bound - header_top)
+                        header_bound += new_header_bound - header_top
+
+                        if header_bound >= footer_bound:
+                            self.position_labels.itemconfigure(group.header, state = 'hidden')
+                            assert not stop
+                            stop = True
+                            break
+                if stop: continue
+
+                if group.footer is not None:
+                    self.position_labels.itemconfigure(group.footer, state = 'normal')
+                    footer_bound = self.position_labels.bbox(group.footer)[1]
+
+                    if footer_bound <= header_bound:
+                        self.position_labels.itemconfigure(group.footer, state = 'hidden')
+                        continue
+
+            elif group.footer_moveable:
+                assert not group.header_moveable
+                footer_moveable = []
+                while group.footer_moveable:
+                    footer_moveable.append(group)
+                    group = group.parent
+
+                if group.footer is not None:
+                    self.position_labels.itemconfigure(group.footer, state = 'normal')
+                    footer_bound = self.position_labels.bbox(group.footer)[1]
+
+                    if footer_bound <= header_bound:
+                        self.position_labels.itemconfigure(group.footer, state = 'hidden')
+                        continue
+
+                while footer_moveable:
+                    group = footer_moveable.pop()
+                    if not footer_moveable and group.header is not None:
+                        self.position_labels.itemconfigure(group.header, state = 'normal')
+                        header_bound = self.position_labels.bbox(group.header)[3]
+
+                        if header_bound >= footer_bound:
+                            self.position_labels.itemconfigure(group.header, state = 'hidden')
+                            assert not stop
+                            stop = True
+                            break
+
+                    if group.footer is not None:
+                        self.position_labels.itemconfigure(group.footer, state = 'normal')
+                        new_footer_bound, footer_bottom = self.position_labels.bbox(group.footer)[1::2]
+                        self.position_labels.move(group.footer, 0, footer_bound - footer_bottom)
+                        footer_bound += new_footer_bound - footer_bottom
+
+                        if footer_bound <= header_bound:
+                            self.position_labels.itemconfigure(group.footer, state = 'hidden')
+                            assert not stop
+                            stop = True
+                            break
+                if stop: continue
+
+            else:
+                if group.header is not None:
+                    self.position_labels.itemconfigure(group.header, state = 'normal')
+                    header_bound = self.position_labels.bbox(group.header)[3]
+
+                    if header_bound >= footer_bound:
+                        self.position_labels.itemconfigure(group.header, state = 'hidden')
+                        continue
+
+                if group.footer is not None:
+                    self.position_labels.itemconfigure(group.footer, state = 'normal')
+                    footer_bound = self.position_labels.bbox(group.footer)[1]
+
+                    if footer_bound <= header_bound:
+                        self.position_labels.itemconfigure(group.footer, state = 'hidden')
+                        continue
+
+            while both_moveable:
+                group = both_moveable.pop()
+                if group.header is not None:
+                    self.position_labels.itemconfigure(group.header, state = 'normal')
                     header_top, new_header_bound = self.position_labels.bbox(group.header)[1::2]
                     self.position_labels.move(group.header, 0, header_bound - header_top)
                     header_bound += new_header_bound - header_top
 
+                    if header_bound >= footer_bound:
+                        self.position_labels.itemconfigure(group.header, state = 'hidden')
+                        break
+
                 if group.footer is not None:
-                    footer_bound, footer_bottom = self.position_labels.bbox(group.footer)[1::2]
-                    if group.footer_moveable:
-                        self.position_labels.move(group.footer, 0, last_footer_bound - footer_bottom)
-                        footer_bound += last_footer_bound - footer_bottom
-                else:
-                    footer_bound = last_footer_bound
+                    self.position_labels.itemconfigure(group.footer, state = 'normal')
+                    new_footer_bound, footer_bottom = self.position_labels.bbox(group.footer)[1::2]
+                    self.position_labels.move(group.footer, 0, footer_bound - footer_bottom)
+                    footer_bound += new_footer_bound - footer_bottom
 
-                stop = False
-
-                if group.footer and footer_bound <= header_bound:
-                    stop = True
-                    self.position_labels.itemconfigure(group.footer, state = 'hidden')
-
-                if group.header and header_bound >= last_footer_bound:
-                    stop = True
-                    self.position_labels.itemconfigure(group.header, state = 'hidden')
-
-                if stop:
-                    last_footer_bound = last_footer_bounds.pop()
-                    break
-
-                last_footer_bound = footer_bound
-
-            if not stop:
-                last_footer_bound = last_footer_bounds.pop()
+                    if footer_bound <= header_bound:
+                        self.position_labels.itemconfigure(group.footer, state = 'hidden')
+                        break
 
     def plot(self, data, time_labels, position_groups, location_information):
         group_number = 0
